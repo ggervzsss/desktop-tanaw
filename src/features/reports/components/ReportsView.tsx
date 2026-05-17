@@ -1,155 +1,11 @@
 import React, { useState } from "react";
-import { Activity, AlertTriangle, Check, Download, Edit2, FileText, Filter, History, MessageSquare, Plus, RotateCcw, Send, TrendingDown, TrendingUp, X } from "lucide-react";
-import { Badge } from "../../../components/Badge";
+import { Activity, AlertTriangle, FileText, History, MessageSquare, Plus, RotateCcw, Send, TrendingDown, TrendingUp } from "lucide-react";
+import { DotFormModal } from "./DotFormModal";
+import { ReportLedgerTable } from "./ReportLedgerTable";
+import { SubmitReportDialog } from "./SubmitReportDialog";
 import { Card } from "../../../components/Card";
 import { SYSTEM_LOGS } from "../../../lib/enterpriseMockData";
-import type { DemoBreakdown, Metrics, ReportRecord, SystemLogPeriod } from "../../../types/enterprise";
-
-type DotFormModalProps = {
-  onClose: () => void;
-  period: SystemLogPeriod;
-  metrics: Metrics;
-  demo: DemoBreakdown;
-  notes: string;
-};
-
-function DotFormModal({ onClose, period, metrics, demo, notes }: DotFormModalProps) {
-  const tpm = parseInt(demo.thisProvMale || "0", 10);
-  const tpf = parseInt(demo.thisProvFemale || "0", 10);
-  const totalThisProv = tpm + tpf;
-
-  const opm = parseInt(demo.otherProvMale || "0", 10);
-  const opf = parseInt(demo.otherProvFemale || "0", 10);
-  const totalOtherProv = opm + opf;
-
-  const fm = parseInt(demo.foreignMale || "0", 10);
-  const ff = parseInt(demo.foreignFemale || "0", 10);
-  const totalForeign = fm + ff;
-
-  return (
-    <div className="animate-in fade-in fixed inset-0 z-50 flex items-center justify-center bg-[#111827]/80 p-4 font-['Inter'] backdrop-blur-sm duration-200 sm:p-8 print:block print:bg-white print:p-0">
-      <div className="flex h-full max-h-[90vh] w-full max-w-6xl flex-col rounded-sm bg-white shadow-2xl print:m-0 print:h-auto print:max-h-none print:max-w-none print:shadow-none">
-        <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 p-4 print:hidden">
-          <div className="flex items-center gap-3">
-            <FileText size={20} className="text-[#111827]" />
-            <h3 className="font-bold text-[#111827]">DOT Form Preview</h3>
-            <span className="rounded-sm bg-[#065f46]/10 px-2 py-1 text-xs font-semibold text-[#065f46]">Ready for Export</span>
-          </div>
-          <button onClick={onClose} className="rounded-sm p-2 text-gray-500 transition-colors hover:bg-gray-200 hover:text-[#111827]">
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-auto bg-white p-8 sm:p-12 print:overflow-visible print:p-8">
-          <div className="mx-auto max-w-5xl">
-            <h2 className="mb-6 text-xl font-bold tracking-wide text-black uppercase">Visitor Attraction</h2>
-
-            <div className="overflow-x-auto print:overflow-visible">
-              <table className="mb-8 w-full border-collapse border-2 border-black text-center text-xs text-black">
-                <thead>
-                  <tr>
-                    <th rowSpan={4} className="w-20 border border-black p-2">
-                      Attraction Code
-                    </th>
-                    <th rowSpan={4} className="w-48 border border-black p-2">
-                      Name/ Month
-                    </th>
-                    <th colSpan={9} className="border border-black bg-gray-50 p-2 font-bold print:bg-transparent">
-                      ***Place of Residence
-                    </th>
-                    <th rowSpan={4} className="w-24 border border-black p-2">
-                      Grand Total Number of Visitors
-                    </th>
-                  </tr>
-                  <tr>
-                    <th colSpan={6} className="border border-black bg-gray-50 p-1 print:bg-transparent">
-                      Philippines
-                    </th>
-                    <th colSpan={3} className="border border-black bg-gray-50 p-1 print:bg-transparent">
-                      Foreign Country Residence
-                    </th>
-                  </tr>
-                  <tr>
-                    <th colSpan={3} className="border border-black p-1">
-                      This province
-                    </th>
-                    <th colSpan={3} className="border border-black p-1">
-                      Other Province
-                    </th>
-                    <th colSpan={3} className="border border-t-0 border-black p-1"></th>
-                  </tr>
-                  <tr>
-                    <th className="w-12 border border-black p-1">Male</th>
-                    <th className="w-12 border border-black p-1">Female</th>
-                    <th className="w-12 border border-black bg-gray-50 p-1 print:bg-transparent">Total</th>
-                    <th className="w-12 border border-black p-1">Male</th>
-                    <th className="w-12 border border-black p-1">Female</th>
-                    <th className="w-12 border border-black bg-gray-50 p-1 print:bg-transparent">Total</th>
-                    <th className="w-12 border border-black p-1">Male</th>
-                    <th className="w-12 border border-black p-1">Female</th>
-                    <th className="w-12 border border-black bg-gray-50 p-1 print:bg-transparent">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td className="border border-black p-2 text-xs font-semibold uppercase">SPL-MKT-01</td>
-                    <td className="border border-black p-2 text-left align-top leading-tight">
-                      <span className="font-bold">SPL Market Branch</span>
-                      <br />
-                      <span className="text-[10px]">{period}</span>
-                    </td>
-                    <td className="border border-black p-2">{tpm || ""}</td>
-                    <td className="border border-black p-2">{tpf || ""}</td>
-                    <td className="border border-black bg-gray-50 p-2 font-bold print:bg-transparent">{totalThisProv || ""}</td>
-                    <td className="border border-black p-2">{opm || ""}</td>
-                    <td className="border border-black p-2">{opf || ""}</td>
-                    <td className="border border-black bg-gray-50 p-2 font-bold print:bg-transparent">{totalOtherProv || ""}</td>
-                    <td className="border border-black p-2">{fm || ""}</td>
-                    <td className="border border-black p-2">{ff || ""}</td>
-                    <td className="border border-black bg-gray-50 p-2 font-bold print:bg-transparent">{totalForeign || ""}</td>
-                    <td className="border border-black bg-gray-100 p-2 text-sm font-bold print:bg-transparent">{metrics.entries}</td>
-                  </tr>
-                  {[...Array(6)].map((_, i) => (
-                    <tr key={i} className="h-8">
-                      <td className="border border-black p-1"></td>
-                      <td className="border border-black p-1"></td>
-                      <td className="border border-black p-1"></td>
-                      <td className="border border-black p-1"></td>
-                      <td className="border border-black bg-gray-50 p-1 print:bg-transparent"></td>
-                      <td className="border border-black p-1"></td>
-                      <td className="border border-black p-1"></td>
-                      <td className="border border-black bg-gray-50 p-1 print:bg-transparent"></td>
-                      <td className="border border-black p-1"></td>
-                      <td className="border border-black p-1"></td>
-                      <td className="border border-black bg-gray-50 p-1 print:bg-transparent"></td>
-                      <td className="border border-black bg-gray-100 p-1 print:bg-transparent"></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {notes && (
-              <div className="mt-4 border border-black bg-gray-50/50 p-4">
-                <h4 className="mb-2 border-b border-gray-300 pb-1 text-xs font-bold uppercase">Supplementary Notes / Details</h4>
-                <p className="text-xs leading-relaxed whitespace-pre-wrap">{notes}</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-3 border-t border-gray-200 bg-gray-50 p-4 print:hidden">
-          <button onClick={onClose} className="rounded-sm border border-gray-300 bg-white px-6 py-2 text-sm font-medium text-[#111827] transition-colors hover:bg-gray-100">
-            Close Preview
-          </button>
-          <button onClick={() => window.print()} className="flex items-center gap-2 rounded-sm bg-[#065f46] px-6 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#044a36]">
-            <Download size={16} /> Download PDF
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+import type { DemoBreakdown, ReportRecord, SystemLogPeriod } from "../../../types/enterprise";
 
 type ReportsViewProps = {
   reportsHistory: ReportRecord[];
@@ -283,26 +139,7 @@ export function ReportsView({ reportsHistory, setReportsHistory }: ReportsViewPr
     <div className="animate-in fade-in space-y-6 font-['Inter'] duration-500">
       {showPreview && <DotFormModal onClose={() => setShowPreview(false)} period={period} metrics={metrics} demo={demo} notes={notes} />}
 
-      {showConfirm && (
-        <div className="animate-in fade-in fixed inset-0 z-60 flex items-center justify-center bg-[#111827]/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-sm border-t-4 border-[#065f46] bg-white p-6 shadow-2xl">
-            <h3 className="mb-2 flex items-center gap-2 text-lg font-bold text-[#111827]">
-              <Send size={20} className="text-[#065f46]" /> Confirm Submission
-            </h3>
-            <p className="mb-6 text-sm leading-relaxed text-gray-600">
-              Are you sure you want to submit this report to the LGU Admin? This action will finalize current system metrics and lock further edits.
-            </p>
-            <div className="flex justify-end gap-3">
-              <button onClick={() => setShowConfirm(false)} className="rounded-sm border border-gray-300 px-4 py-2 text-sm font-bold text-[#111827] transition-colors hover:bg-gray-50">
-                Edit Draft
-              </button>
-              <button onClick={executeSubmit} className="flex items-center gap-2 rounded-sm bg-[#065f46] px-4 py-2 text-sm font-bold text-white shadow-sm transition-colors hover:bg-[#044a36]">
-                <Check size={16} /> Yes, Submit
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {showConfirm && <SubmitReportDialog onCancel={() => setShowConfirm(false)} onConfirm={executeSubmit} />}
 
       <div className="flex items-center justify-between">
         <div>
@@ -521,85 +358,16 @@ export function ReportsView({ reportsHistory, setReportsHistory }: ReportsViewPr
           </div>
         </Card>
 
-        <Card className="flex flex-col overflow-hidden rounded-sm border border-gray-200 shadow-sm lg:col-span-2">
-          <div className="flex items-center justify-between border-b border-gray-200 bg-white p-5">
-            <h3 className="text-sm font-bold tracking-wider text-[#111827] uppercase">Submission Ledger</h3>
-            <div className="flex cursor-pointer items-center gap-2 rounded-sm bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-500 transition-colors hover:text-[#111827]">
-              <Filter size={14} /> Filter Records
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-auto bg-white p-0">
-            <table className="w-full text-left text-sm whitespace-nowrap">
-              <thead className="sticky top-0 bg-gray-50 text-[10px] font-bold tracking-wider text-gray-500 uppercase">
-                <tr>
-                  <th className="border-b border-gray-200 px-5 py-3">Report ID</th>
-                  <th className="border-b border-gray-200 px-5 py-3">Period</th>
-                  <th className="border-b border-gray-200 px-5 py-3 text-right">Unique Pax</th>
-                  <th className="border-b border-gray-200 px-5 py-3">Status</th>
-                  <th className="border-b border-gray-200 px-5 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {reportsHistory.map((report) => (
-                  <tr
-                    key={report.id}
-                    onClick={() => handleViewReport(report)}
-                    className={`group cursor-pointer transition-colors ${activeReportId === report.id ? "bg-[#065f46]/5" : "hover:bg-gray-50"}`}
-                  >
-                    <td className="px-5 py-4 font-mono text-xs font-semibold text-[#111827]">{report.id}</td>
-                    <td className="px-5 py-4 text-sm font-medium text-gray-700">{report.date}</td>
-                    <td className="px-5 py-4 text-right font-mono font-bold text-[#065f46]">{report.unique?.toLocaleString() || 0}</td>
-                    <td className="px-5 py-4">
-                      <Badge
-                        variant={
-                          report.status === "Consolidated"
-                            ? "success"
-                            : report.status === "Submitted" || report.status === "Resubmitted"
-                              ? "info"
-                              : report.status === "Returned for Revision"
-                                ? "warning"
-                                : "default"
-                        }
-                      >
-                        {report.status}
-                      </Badge>
-                    </td>
-                    <td className="px-5 py-4 text-right">
-                      <div className="flex justify-end gap-3 opacity-60 transition-opacity group-hover:opacity-100">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleViewReport(report);
-                            setShowPreview(true);
-                            setTimeout(() => window.print(), 100);
-                          }}
-                          className="flex items-center text-gray-500 hover:text-[#065f46]"
-                          title="Download PDF"
-                        >
-                          <Download size={16} />
-                        </button>
-                        <button
-                          className={`flex items-center gap-1 text-xs font-semibold tracking-wider uppercase ${report.status === "Draft" || report.status === "Returned for Revision" ? "text-[#065f46] hover:text-[#044a36]" : "text-gray-400 hover:text-[#111827]"}`}
-                        >
-                          {report.status === "Draft" || report.status === "Returned for Revision" ? <Edit2 size={14} /> : <FileText size={14} />}
-                          {report.status === "Draft" || report.status === "Returned for Revision" ? "Edit" : "View"}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {reportsHistory.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="px-5 py-8 text-center text-sm text-gray-400">
-                      No reports submitted yet.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+        <ReportLedgerTable
+          activeReportId={activeReportId}
+          reportsHistory={reportsHistory}
+          onViewReport={handleViewReport}
+          onPrintReport={(report) => {
+            handleViewReport(report);
+            setShowPreview(true);
+            window.setTimeout(() => window.print(), 100);
+          }}
+        />
       </div>
     </div>
   );
