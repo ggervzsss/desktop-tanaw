@@ -1,4 +1,5 @@
 import { Check, Send } from "lucide-react";
+import { ModalPortal } from "../../../components/ModalPortal";
 
 type SubmitReportDialogProps = {
   onCancel: () => void;
@@ -7,8 +8,9 @@ type SubmitReportDialogProps = {
 
 export function SubmitReportDialog({ onCancel, onConfirm }: SubmitReportDialogProps) {
   return (
-    <div className="animate-in fade-in fixed inset-0 z-60 flex items-center justify-center bg-[#111827]/60 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-sm border-t-4 border-[#065f46] bg-white p-6 shadow-2xl">
+    <ModalPortal>
+      <div className="fixed inset-0 z-1000 flex items-center justify-center bg-[#111827]/60 p-4 backdrop-blur-sm">
+      <div className="animate-in fade-in w-full max-w-md rounded-sm border-t-4 border-[#065f46] bg-white p-6 shadow-2xl">
         <h3 className="mb-2 flex items-center gap-2 text-lg font-bold text-[#111827]">
           <Send size={20} className="text-[#065f46]" /> Confirm Submission
         </h3>
@@ -24,6 +26,7 @@ export function SubmitReportDialog({ onCancel, onConfirm }: SubmitReportDialogPr
           </button>
         </div>
       </div>
-    </div>
+      </div>
+    </ModalPortal>
   );
 }

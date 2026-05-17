@@ -1,4 +1,5 @@
 import { Download, FileText, X } from "lucide-react";
+import { ModalPortal } from "../../../components/ModalPortal";
 import type { DemoBreakdown, Metrics, SystemLogPeriod } from "../../../types/enterprise";
 
 type DotFormModalProps = {
@@ -23,8 +24,9 @@ export function DotFormModal({ onClose, period, metrics, demo, notes }: DotFormM
   const totalForeign = fm + ff;
 
   return (
-    <div className="animate-in fade-in fixed inset-0 z-50 flex items-center justify-center bg-[#111827]/80 p-4 font-['Inter'] backdrop-blur-sm duration-200 sm:p-8 print:block print:bg-white print:p-0">
-      <div className="flex h-full max-h-[90vh] w-full max-w-6xl flex-col rounded-sm bg-white shadow-2xl print:m-0 print:h-auto print:max-h-none print:max-w-none print:shadow-none">
+    <ModalPortal>
+      <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-[#111827]/80 p-4 font-['Inter'] backdrop-blur-sm sm:p-8 print:block print:bg-white print:p-0">
+      <div className="animate-in fade-in flex h-full max-h-[90vh] w-full max-w-6xl flex-col rounded-sm bg-white shadow-2xl print:m-0 print:h-auto print:max-h-none print:max-w-none print:shadow-none">
         <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 p-4 print:hidden">
           <div className="flex items-center gap-3">
             <FileText size={20} className="text-[#111827]" />
@@ -143,6 +145,7 @@ export function DotFormModal({ onClose, period, metrics, demo, notes }: DotFormM
           </button>
         </div>
       </div>
-    </div>
+      </div>
+    </ModalPortal>
   );
 }

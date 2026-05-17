@@ -1,5 +1,6 @@
 import { Check, RefreshCw, Shield, Video, X } from "lucide-react";
 import type { FormEvent } from "react";
+import { ModalPortal } from "../../../components/ModalPortal";
 import type { CameraFormValues } from "../types/camera";
 
 type CameraAddModalProps = {
@@ -12,8 +13,9 @@ type CameraAddModalProps = {
 
 export function CameraAddModal({ newCam, isValidating, onClose, onSubmit, onChange }: CameraAddModalProps) {
   return (
-    <div className="animate-in fade-in fixed inset-0 z-60 flex items-center justify-center bg-[#111827]/60 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-sm border-t-4 border-[#065f46] bg-white p-6 shadow-2xl">
+    <ModalPortal>
+      <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-[#111827]/60 p-4 backdrop-blur-sm">
+      <div className="animate-in fade-in w-full max-w-lg rounded-sm border-t-4 border-[#065f46] bg-white p-6 shadow-2xl">
         <div className="mb-6 flex items-center justify-between">
           <h3 className="flex items-center gap-2 text-lg font-bold text-[#111827]">
             <Video size={20} className="text-[#065f46]" /> Register Camera Node
@@ -85,6 +87,7 @@ export function CameraAddModal({ newCam, isValidating, onClose, onSubmit, onChan
           </div>
         </form>
       </div>
-    </div>
+      </div>
+    </ModalPortal>
   );
 }
