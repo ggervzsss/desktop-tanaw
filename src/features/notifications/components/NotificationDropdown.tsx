@@ -1,0 +1,108 @@
+import { AlertCircle, AlertTriangle, Bell, CheckCircle, Settings } from "lucide-react";
+import type { EnterpriseNotification, EnterpriseView } from "../../../types/enterprise";
+
+type NotificationDropdownProps = {
+  isOpen: boolean;
+  notifications: EnterpriseNotification[];
+  unreadCount: number;
+  showSettings: boolean;
+  occupancyThreshold: number;
+  onToggleOpen: () => void;
+  onClose: () => void;
+  onToggleSettings: () => void;
+  onMarkAllRead: () => void;
+  onSelectNotification: (notification: EnterpriseNotification) => void;
+  onSetOccupancyThreshold: (threshold: number) => void;
+};
+
+const notificationIconByType = (type: EnterpriseNotification["type"]) => {
+  if (type === "critical") return <AlertTriangle size={16} className="text-[#a40e0e]" />;
+  if (type === "warning") return <AlertCircle size={16} className="text-[#ffd200]" />;
+  return <CheckCircle size={16} className="text-[#2d5eff]" />;
+};
+
+export function NotificationDropdown({
+  isOpen,
+  notifications,
+  unreadCount,
+  showSettings,
+  occupancyThreshold,
+  onToggleOpen,
+  onToggleSettings,
+  onMarkAllRead,
+  onSelectNotification,
+  onSetOccupancyThreshold,
+}: NotificationDropdownProps) {
+  return (
+    <div className="relative">
+      <button
+        onClick={onToggleOpen}
+        className={`relative rounded-full p-2.5 transition-colors ${isOpen ? "bg-gray-100 text-[#065f46]" : "border border-gray-100 bg-white text-gray-500 shadow-sm hover:bg-gray-50"}`}
+      >
+        <Bell size={20} />
+        {unreadCount > 0 && <span className="absolute top-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#a40e0e]"></span>}
+      </button>
+
+      {isOpen && (
+        <div className="animate-in slide-in-from-top-2 absolute right-0 z-50 mt-2 flex max-h-128 w-80 flex-col overflow-hidden rounded-xl border border-gray-100 bg-white shadow-xl duration-200">
+          <div className="flex shrink-0 items-center justify-between border-b border-gray-100 bg-gray-50 p-3">
+            <h3 className="flex items-center gap-2 text-sm font-bold text-[#111827]">
+              System Alerts
+              {unreadCount > 0 && <span className="rounded-sm bg-[#a40e0e] px-1.5 py-0.5 text-[10px] leading-none text-white shadow-sm">{unreadCount}</span>}
+            </h3>
+            <div className="flex items-center gap-3">
+              <button onClick={onMarkAllRead} className="text-[10px] font-bold tracking-wider text-[#2d5eff] uppercase hover:underline">
+                Mark all read
+              </button>
+              <button onClick={onToggleSettings} className={`rounded-sm p-1 transition-colors ${showSettings ? "bg-[#065f46] text-white" : "text-gray-400 hover:bg-gray-200 hover:text-[#065f46]"}`}>
+                <Settings size={14} />
+              </button>
+            </div>
+          </div>
+
+          {showSettings && (
+            <div className="shrink-0 border-b border-[#065f46]/10 bg-[#065f46]/5 p-4 shadow-inner">
+              <label className="flex items-center justify-between text-xs font-bold text-[#111827]">
+                Overcrowding Threshold
+                <select
+                  value={occupancyThreshold}
+                  onChange={(event) => onSetOccupancyThreshold(Number(event.target.value))}
+                  className="ml-2 rounded-sm border border-gray-300 p-1.5 text-xs font-medium outline-none focus:border-[#065f46]"
+                >
+                  <option value={80}>80% Capacity</option>
+                  <option value={90}>90% Capacity</option>
+                  <option value={100}>100% Capacity</option>
+                </select>
+              </label>
+              <p className="mt-2 text-[10px] leading-relaxed font-medium text-gray-500">System will trigger a critical alert and push a toast notification when node occupancy surpasses this value.</p>
+            </div>
+          )}
+
+          <div className="flex-1 overflow-y-auto bg-white">
+            {notifications.map((notification) => (
+              <div
+                key={notification.id}
+                onClick={() => onSelectNotification(notification)}
+                className={`group flex cursor-pointer gap-3 border-b border-gray-50 p-4 transition-colors hover:bg-gray-50 ${!notification.read ? "bg-blue-50/20" : "opacity-80"}`}
+              >
+                <div className="mt-0.5 shrink-0">{notificationIconByType(notification.type)}</div>
+                <div className="flex-1">
+                  <p className={`text-sm leading-snug transition-colors group-hover:text-[#065f46] ${!notification.read ? "font-bold text-[#111827]" : "font-medium text-gray-700"}`}>
+                    {notification.message}
+                  </p>
+                  <p className="mt-1.5 text-[10px] font-bold tracking-wider text-gray-400 uppercase">{notification.time}</p>
+                </div>
+                {!notification.read && <div className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#2d5eff] shadow-sm"></div>}
+              </div>
+            ))}
+          </div>
+          <div className="shrink-0 border-t border-gray-100 bg-gray-50 p-2.5 text-center">
+            <button className="text-[10px] font-bold tracking-wider text-gray-500 uppercase hover:text-[#065f46]">View Alert Ledger</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export type NotificationTarget = EnterpriseView;
