@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
+import { ConfirmationDialog } from "../../../components/ConfirmationDialog";
 import type { Camera } from "../../../types/enterprise";
 import { CameraAddModal } from "./CameraAddModal";
 import { CameraList } from "./CameraList";
@@ -21,6 +22,7 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
   const [newCam, setNewCam] = useState<CameraFormValues>(emptyCameraForm);
   const [isValidating, setIsValidating] = useState(false);
   const [editForm, setEditForm] = useState<Camera | null>(null);
+  const [cameraPendingDelete, setCameraPendingDelete] = useState<Camera | null>(null);
 
   const activeCam = cameras.find((camera) => camera.id === activeCamId);
   const warnings = isEditMode && editForm ? getValidationWarnings(editForm.config) : getValidationWarnings(activeCam?.config);
@@ -33,13 +35,17 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
 
   const handleDelete = () => {
     if (!activeCam) return;
+    setCameraPendingDelete(activeCam);
+  };
 
-    if (window.confirm(`Are you sure you want to delete ${activeCam.name}? This will stop all edge counting on this node.`)) {
-      const updated = cameras.filter((camera) => camera.id !== activeCamId);
-      setCameras(updated);
-      setActiveCamId(updated[0]?.id || null);
-      setIsEditMode(false);
-    }
+  const confirmDeleteCamera = () => {
+    if (!cameraPendingDelete) return;
+
+    const updated = cameras.filter((camera) => camera.id !== cameraPendingDelete.id);
+    setCameras(updated);
+    setActiveCamId(updated[0]?.id || null);
+    setIsEditMode(false);
+    setCameraPendingDelete(null);
   };
 
   const handleSave = () => {
@@ -80,6 +86,20 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
   return (
     <div className="animate-in fade-in space-y-6 font-['Inter'] duration-500">
       {showAddModal && <CameraAddModal newCam={newCam} isValidating={isValidating} onClose={() => setShowAddModal(false)} onSubmit={handleAddCamera} onChange={setNewCam} />}
+      {cameraPendingDelete && (
+        <ConfirmationDialog
+          cancelLabel="Keep Camera"
+          confirmLabel="Delete Camera"
+          onCancel={() => setCameraPendingDelete(null)}
+          onConfirm={confirmDeleteCamera}
+          title="Delete Camera Node"
+          variant="danger"
+        >
+          <p>
+            Are you sure you want to delete <span className="font-bold text-[#111827]">{cameraPendingDelete.name}</span>? This will stop all edge counting on this node.
+          </p>
+        </ConfirmationDialog>
+      )}
 
       <div className="flex items-center justify-between">
         <div>
