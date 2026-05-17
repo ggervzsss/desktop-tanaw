@@ -1,1 +1,455 @@
+@import url("https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Montserrat:ital,wght@0,400;0,500;0,600;0,700;1,500&display=swap");
 @import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "Montserrat", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Bai Jamjuree", ui-sans-serif, system-ui, sans-serif;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  min-width: 960px;
+  overflow: hidden;
+  background: #eef5f0;
+  user-select: none;
+}
+
+input,
+textarea,
+[contenteditable="true"] {
+  user-select: text;
+}
+
+.animate-in {
+  animation-duration: 500ms;
+  animation-fill-mode: both;
+}
+
+.fade-in {
+  animation-name: tanaw-enterprise-fade-in;
+}
+
+.slide-in-from-top-2 {
+  animation-name: tanaw-enterprise-slide-in-top;
+}
+
+.slide-in-from-right-8 {
+  animation-name: tanaw-enterprise-slide-in-right;
+}
+
+@keyframes tanaw-enterprise-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes tanaw-enterprise-slide-in-top {
+  from {
+    opacity: 0;
+    transform: translateY(-0.5rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes tanaw-enterprise-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(2rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Enterprise shell overrides */
+.enterprise-shell {
+  min-height: 100vh;
+  color: #0f172a;
+  background: #eef5f0;
+}
+
+.enterprise-shell aside.bg-\[\#065f46\] {
+  background: #055b25 !important;
+  box-shadow: 12px 0 36px rgb(5 91 37 / 0.2) !important;
+}
+
+.enterprise-shell aside .bg-black\/20 {
+  background: rgb(3 63 27 / 0.52) !important;
+  border: 1px solid rgb(255 255 255 / 0.1);
+}
+
+.enterprise-shell .text-white\/80 {
+  color: rgb(255 255 255 / 0.92) !important;
+}
+
+.enterprise-shell .text-white\/60 {
+  color: rgb(255 255 255 / 0.76) !important;
+}
+
+.enterprise-shell .bg-\[\#f4f8f5\],
+.enterprise-shell .bg-\[\#f8f9fa\] {
+  background: #f4f8f5 !important;
+}
+
+.enterprise-shell header.bg-white\/80 {
+  background: rgb(255 255 255 / 0.94) !important;
+  border-color: #cbdacf !important;
+  box-shadow: 0 12px 30px rgb(15 23 42 / 0.06);
+}
+
+.enterprise-shell .bg-white {
+  background-color: #ffffff !important;
+}
+
+.enterprise-shell .bg-gray-50 {
+  background-color: #f0f5f1 !important;
+}
+
+.enterprise-shell .bg-gray-100 {
+  background-color: #e5eee8 !important;
+}
+
+.enterprise-shell .bg-blue-50,
+.enterprise-shell .bg-blue-50\/20 {
+  background-color: #eaf2ff !important;
+}
+
+.enterprise-shell .bg-red-50 {
+  background-color: #fff1f1 !important;
+}
+
+.enterprise-shell .bg-\[\#065f46\]\/5 {
+  background-color: rgb(6 95 70 / 0.08) !important;
+}
+
+.enterprise-shell .bg-\[\#065f46\]\/10 {
+  background-color: rgb(6 95 70 / 0.13) !important;
+}
+
+.enterprise-shell .bg-\[\#ffd200\]\/10,
+.enterprise-shell .bg-\[\#ffd200\]\/20 {
+  background-color: rgb(255 210 0 / 0.22) !important;
+}
+
+.enterprise-shell .border-gray-50,
+.enterprise-shell .border-gray-100 {
+  border-color: #d6e2d9 !important;
+}
+
+.enterprise-shell .border-gray-200,
+.enterprise-shell .border-gray-200\/70 {
+  border-color: #c6d6cb !important;
+}
+
+.enterprise-shell .border-gray-300 {
+  border-color: #9eb3a5 !important;
+}
+
+.enterprise-shell .border-\[\#065f46\]\/10 {
+  border-color: rgb(6 95 70 / 0.22) !important;
+}
+
+.enterprise-shell .border-\[\#ffd200\]\/30 {
+  border-color: rgb(190 126 0 / 0.36) !important;
+}
+
+.enterprise-shell .text-\[\#111827\],
+.enterprise-shell .text-\[\#2a3063\] {
+  color: #111827 !important;
+}
+
+.enterprise-shell .text-gray-300 {
+  color: #7a8796 !important;
+}
+
+.enterprise-shell .text-gray-400 {
+  color: #64748b !important;
+}
+
+.enterprise-shell .text-gray-500 {
+  color: #475569 !important;
+}
+
+.enterprise-shell .text-gray-600 {
+  color: #334155 !important;
+}
+
+.enterprise-shell .text-gray-700,
+.enterprise-shell .text-gray-800 {
+  color: #1f2937 !important;
+}
+
+.enterprise-shell .text-red-900 {
+  color: #7f1d1d !important;
+}
+
+.enterprise-shell .text-blue-800 {
+  color: #1e3a8a !important;
+}
+
+.enterprise-shell .text-green-600 {
+  color: #047857 !important;
+}
+
+.enterprise-shell .shadow-sm {
+  box-shadow: 0 2px 7px rgb(15 23 42 / 0.08) !important;
+}
+
+.enterprise-shell .shadow-md {
+  box-shadow: 0 8px 18px rgb(15 23 42 / 0.12) !important;
+}
+
+.enterprise-shell .shadow-xl,
+.enterprise-shell .shadow-2xl {
+  box-shadow: 0 24px 60px rgb(15 23 42 / 0.18) !important;
+}
+
+.enterprise-shell input,
+.enterprise-shell select,
+.enterprise-shell textarea {
+  background-color: #ffffff;
+  border-color: #9eb3a5;
+  color: #0f172a;
+}
+
+.enterprise-shell input::placeholder,
+.enterprise-shell textarea::placeholder {
+  color: #64748b;
+  opacity: 1;
+}
+
+.enterprise-shell input:focus,
+.enterprise-shell select:focus,
+.enterprise-shell textarea:focus {
+  border-color: #065f46 !important;
+  box-shadow: 0 0 0 3px rgb(6 95 70 / 0.14);
+}
+
+.enterprise-shell table thead {
+  background-color: #e8f1eb !important;
+  color: #334155 !important;
+}
+
+.enterprise-shell table tbody {
+  color: #1f2937;
+}
+
+.enterprise-shell table tbody tr:hover {
+  background-color: rgb(6 95 70 / 0.055);
+}
+
+.enterprise-shell .divide-gray-100 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #d6e2d9 !important;
+}
+
+.enterprise-shell .hover\:bg-gray-50:hover {
+  background-color: #eef6f1 !important;
+}
+
+.enterprise-shell .hover\:bg-gray-100:hover,
+.enterprise-shell .hover\:bg-gray-200:hover {
+  background-color: #dce9e1 !important;
+}
+
+.enterprise-shell .hover\:text-\[\#111827\]:hover,
+.enterprise-shell .group:hover .group-hover\:text-\[\#065f46\] {
+  color: #065f46 !important;
+}
+
+.enterprise-shell .recharts-cartesian-axis-tick-value {
+  fill: #475569 !important;
+}
+
+.enterprise-shell .recharts-cartesian-grid line {
+  stroke: #d6e2d9 !important;
+}
+
+.enterprise-shell .recharts-tooltip-wrapper .recharts-default-tooltip {
+  background: #ffffff !important;
+  border-color: #c6d6cb !important;
+  color: #0f172a !important;
+  box-shadow: 0 14px 30px rgb(15 23 42 / 0.16) !important;
+}
+
+.enterprise-shell .recharts-legend-item-text {
+  color: #334155 !important;
+}
+
+html.dark .enterprise-shell {
+  color: #f8fafc;
+  background: #0b1120;
+}
+
+html.dark .enterprise-shell aside.bg-\[\#065f46\] {
+  background: #064e3b !important;
+  box-shadow: 12px 0 36px rgb(0 0 0 / 0.35) !important;
+}
+
+html.dark .enterprise-shell header.bg-white\/80,
+html.dark .enterprise-shell header.dark\:bg-\[\#111827\]\/90 {
+  background: rgb(17 24 39 / 0.94) !important;
+  border-color: #334155 !important;
+  box-shadow: 0 12px 30px rgb(0 0 0 / 0.25);
+}
+
+html.dark .enterprise-shell .bg-white {
+  background-color: #1e293b !important;
+}
+
+html.dark .enterprise-shell .bg-white\/50,
+html.dark .enterprise-shell .bg-white\/80 {
+  background-color: rgb(17 24 39 / 0.9) !important;
+}
+
+html.dark .enterprise-shell .bg-gray-50,
+html.dark .enterprise-shell .bg-\[\#f4f8f5\],
+html.dark .enterprise-shell .bg-\[\#f8f9fa\] {
+  background-color: #0f172a !important;
+}
+
+html.dark .enterprise-shell .bg-gray-100 {
+  background-color: #334155 !important;
+}
+
+html.dark .enterprise-shell .bg-red-50 {
+  background-color: #450a0a !important;
+}
+
+html.dark .enterprise-shell .bg-blue-50,
+html.dark .enterprise-shell .bg-blue-50\/20 {
+  background-color: rgb(30 64 175 / 0.18) !important;
+}
+
+html.dark .enterprise-shell .bg-\[\#065f46\]\/5,
+html.dark .enterprise-shell .bg-\[\#065f46\]\/10 {
+  background-color: rgb(16 185 129 / 0.14) !important;
+}
+
+html.dark .enterprise-shell .bg-\[\#ffd200\]\/10,
+html.dark .enterprise-shell .bg-\[\#ffd200\]\/20 {
+  background-color: rgb(250 204 21 / 0.16) !important;
+}
+
+html.dark .enterprise-shell .text-\[\#111827\],
+html.dark .enterprise-shell .text-\[\#2a3063\],
+html.dark .enterprise-shell .text-gray-800 {
+  color: #f8fafc !important;
+}
+
+html.dark .enterprise-shell .text-gray-700 {
+  color: #e2e8f0 !important;
+}
+
+html.dark .enterprise-shell .text-gray-600 {
+  color: #cbd5e1 !important;
+}
+
+html.dark .enterprise-shell .text-gray-500,
+html.dark .enterprise-shell .text-gray-400 {
+  color: #94a3b8 !important;
+}
+
+html.dark .enterprise-shell .text-gray-300 {
+  color: #cbd5e1 !important;
+}
+
+html.dark .enterprise-shell .text-red-900,
+html.dark .enterprise-shell .text-\[\#a40e0e\] {
+  color: #fca5a5 !important;
+}
+
+html.dark .enterprise-shell .text-blue-800,
+html.dark .enterprise-shell .text-\[\#2d5eff\] {
+  color: #93c5fd !important;
+}
+
+html.dark .enterprise-shell .text-green-600,
+html.dark .enterprise-shell .text-\[\#065f46\],
+html.dark .enterprise-shell .text-\[\#055b25\] {
+  color: #6ee7b7 !important;
+}
+
+html.dark .enterprise-shell .border-gray-50,
+html.dark .enterprise-shell .border-gray-100,
+html.dark .enterprise-shell .border-gray-200,
+html.dark .enterprise-shell .border-gray-300,
+html.dark .enterprise-shell .border-gray-200\/70 {
+  border-color: #334155 !important;
+}
+
+html.dark .enterprise-shell input,
+html.dark .enterprise-shell select,
+html.dark .enterprise-shell textarea {
+  background-color: #0f172a;
+  border-color: #475569;
+  color: #f8fafc;
+}
+
+html.dark .enterprise-shell input::placeholder,
+html.dark .enterprise-shell textarea::placeholder {
+  color: #94a3b8;
+}
+
+html.dark .enterprise-shell table thead {
+  background-color: #111827 !important;
+  color: #e2e8f0 !important;
+}
+
+html.dark .enterprise-shell table tbody {
+  color: #e5e7eb;
+}
+
+html.dark .enterprise-shell table tbody tr:hover {
+  background-color: rgb(51 65 85 / 0.55);
+}
+
+html.dark .enterprise-shell .divide-gray-100 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #334155 !important;
+}
+
+html.dark .enterprise-shell .hover\:bg-gray-50:hover,
+html.dark .enterprise-shell .hover\:bg-gray-100:hover,
+html.dark .enterprise-shell .hover\:bg-gray-200:hover {
+  background-color: #334155 !important;
+}
+
+html.dark .enterprise-shell .hover\:bg-red-50:hover {
+  background-color: #7f1d1d !important;
+}
+
+html.dark .enterprise-shell .recharts-cartesian-axis-tick-value {
+  fill: #cbd5e1 !important;
+}
+
+html.dark .enterprise-shell .recharts-cartesian-grid line {
+  stroke: #334155 !important;
+}
+
+html.dark .enterprise-shell .recharts-tooltip-wrapper .recharts-default-tooltip {
+  background: #111827 !important;
+  border-color: #475569 !important;
+  color: #f8fafc !important;
+}
+
+html.dark .enterprise-shell .recharts-legend-item-text {
+  color: #cbd5e1 !important;
+}
