@@ -69,7 +69,7 @@ export function LoginPage() {
       >
         <div className="mb-8 flex flex-col items-center text-center">
           <img src={citySeal} alt="San Pedro Logo" className="mb-4 h-24 w-24 drop-shadow-md" />
-          <h1 className="font-display text-3xl font-bold text-[#055b25]">TANAW</h1>
+          <h1 className="font-display text-3xl font-bold text-tanaw-green">TANAW</h1>
           <p className="mt-1 text-sm font-semibold tracking-wide text-[#2a3063]">System Login Portal</p>
         </div>
 
@@ -108,7 +108,7 @@ export function LoginPage() {
               <button
                 type="button"
                 onClick={() => setShowPassword((current) => !current)}
-                className="absolute top-1/2 right-3 -translate-y-1/2 rounded-sm p-1 text-gray-500 transition hover:bg-gray-100 hover:text-[#055b25]"
+                className="absolute top-1/2 right-3 -translate-y-1/2 rounded-sm p-1 text-gray-500 transition hover:bg-gray-100 hover:text-tanaw-green"
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
@@ -120,7 +120,7 @@ export function LoginPage() {
           <button
             type="submit"
             disabled={loginMutation.isPending}
-            className="flex w-full items-center justify-center gap-2 rounded-md bg-[#055b25] px-4 py-3 font-bold text-white shadow-lg shadow-[#055b25]/25 transition hover:bg-[#044a1e] disabled:cursor-not-allowed disabled:opacity-70"
+            className="flex w-full items-center justify-center gap-2 rounded-md bg-tanaw-green px-4 py-3 font-bold text-white shadow-lg shadow-[#055b25]/25 transition hover:bg-[#044a1e] disabled:cursor-not-allowed disabled:opacity-70"
           >
             <Shield size={19} />
             {loginMutation.isPending ? "Verifying..." : "Secure Login"}

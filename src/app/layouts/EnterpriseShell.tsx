@@ -246,7 +246,7 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
                         setActiveView("profile");
                         setIsProfileOpen(false);
                       }}
-                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-50 hover:text-[#055b25] dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-green-400"
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-50 hover:text-tanaw-green dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-green-400"
                     >
                       <User size={16} /> Edit Profile Info
                     </button>
@@ -255,7 +255,7 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
                         setActiveView("security");
                         setIsProfileOpen(false);
                       }}
-                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-50 hover:text-[#055b25] dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-green-400"
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-50 hover:text-tanaw-green dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-green-400"
                     >
                       <Shield size={16} /> Security & Data Control
                     </button>
