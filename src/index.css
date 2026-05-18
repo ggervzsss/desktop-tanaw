@@ -4,6 +4,10 @@
 @theme {
   --font-sans: "Inter", "Montserrat", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Bai Jamjuree", ui-sans-serif, system-ui, sans-serif;
+  --color-tanaw-green: #055b25;
+  --color-tanaw-green-dark: #044a1e;
+  --color-tanaw-navy: #2a3063;
+  --color-tanaw-red: #a40e0e;
 }
 
 html,
