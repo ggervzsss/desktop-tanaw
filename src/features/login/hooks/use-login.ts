@@ -9,7 +9,7 @@ import type { AuthRole } from "../types";
 
 const getLandingRoute = (role: AuthRole) => (role === "enterprise" ? routePaths.enterpriseCameras : routePaths.enterpriseCameras);
 
-export function useLogin() {
+export function useLogin(redirectTo?: string) {
   const navigate = useNavigate();
   const setSession = useAuthStore((state) => state.setSession);
 
@@ -18,7 +18,7 @@ export function useLogin() {
     onSuccess: (session) => {
       setSession(session);
       notifySuccess("Secure login successful.");
-      navigate(getLandingRoute(session.user.role), { replace: true });
+      navigate(redirectTo ?? getLandingRoute(session.user.role), { replace: true });
     },
     onError: () => {
       notifyError("Login failed. Please check your credentials.");
