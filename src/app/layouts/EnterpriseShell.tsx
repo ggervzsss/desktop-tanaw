@@ -165,15 +165,12 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
           </button>
         </nav>
 
-        {/* User / Logout */}
+        {/* Current Node */}
         <div className="mt-auto border-t border-white/10 p-4">
-          <div className="mb-3 rounded-xl bg-black/20 p-3">
+          <div className="rounded-xl bg-black/20 p-3">
             <p className="mb-1 text-[10px] font-bold text-white/60 uppercase">Current Node</p>
             <p className="truncate text-sm font-semibold">SPL Market Branch</p>
           </div>
-          <button onClick={handleLogout} className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-white/80 transition-colors hover:bg-red-500/20 hover:text-red-100">
-            <LogOut size={18} /> Secure Logout
-          </button>
         </div>
       </aside>
 
