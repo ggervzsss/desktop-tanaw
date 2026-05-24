@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Camera, ChevronDown, FileText, LayoutDashboard, LogOut, Shield, User } from "lucide-react";
 import { CriticalAlertToasts } from "../../features/alerts/components/CriticalAlertToasts";
@@ -22,6 +22,7 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
   const navigate = useNavigate();
   const logout = useAuthStore((state) => state.logout);
   const user = useAuthStore((state) => state.user);
+  const contentScrollRef = useRef<HTMLDivElement>(null);
   const [activeView, setActiveView] = useState<EnterpriseView>(initialView);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -79,6 +80,10 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
   useEffect(() => {
     setActiveView(initialView);
   }, [initialView]);
+
+  useEffect(() => {
+    contentScrollRef.current?.scrollTo({ top: 0, left: 0 });
+  }, [activeView]);
 
   const handleLogout = () => {
     logout();
@@ -227,7 +232,7 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
         </header>
 
         {/* Scrollable Content Area */}
-        <div className="flex-1 overflow-auto bg-[#f4f8f5] p-8 transition-colors duration-300 dark:bg-[#0f172a]">
+        <div ref={contentScrollRef} className="flex-1 overflow-auto bg-[#f4f8f5] p-8 transition-colors duration-300 dark:bg-[#0f172a]">
           <div className="mx-auto max-w-7xl">
             {activeView === "dashboard" && <DashboardView />}
             {activeView === "cameras" && <CameraManagementView cameras={cameras} setCameras={setCameras} />}

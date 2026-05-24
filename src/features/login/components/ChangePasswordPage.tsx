@@ -1,6 +1,6 @@
 import { type ChangeEvent, type FormEvent, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-import { Eye, EyeOff, KeyRound, LockKeyhole, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, KeyRound, LockKeyhole, ShieldCheck } from "lucide-react";
 import { routePaths } from "../../../app/router/routePaths";
 import { cn } from "../../../utils/cn";
 import { notifyError, notifySuccess } from "../../toasts/services/toast-service";
@@ -33,7 +33,6 @@ export function ChangePasswordPage() {
   const logout = useAuthStore((state) => state.logout);
   const [values, setValues] = useState<PasswordValues>(initialValues);
   const [errors, setErrors] = useState<PasswordErrors>({});
-  const [showPasswords, setShowPasswords] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!user) {
@@ -94,6 +93,15 @@ export function ChangePasswordPage() {
         onSubmit={handleSubmit}
         className="relative z-10 my-auto max-h-[calc(100vh-2rem)] w-full max-w-md overflow-y-auto rounded-lg border border-white/45 bg-white/95 p-5 shadow-2xl backdrop-blur-md sm:p-6"
       >
+        <button
+          type="button"
+          onClick={logout}
+          className="hover:text-tanaw-green absolute top-4 left-4 rounded-md p-2 text-gray-500 transition hover:bg-gray-100"
+          aria-label="Return to login"
+        >
+          <ArrowLeft size={19} />
+        </button>
+
         <div className="mb-5 flex flex-col items-center text-center">
           <img src={citySeal} alt="San Pedro Logo" className="mb-3 h-16 w-16 drop-shadow-md sm:h-20 sm:w-20" />
           <h1 className="font-display text-tanaw-green text-2xl font-bold sm:text-3xl">TANAW</h1>
@@ -117,26 +125,15 @@ export function ChangePasswordPage() {
             label="Current Temporary Password"
             value={values.currentPassword}
             error={errors.currentPassword}
-            showPassword={showPasswords}
             onChange={updateField("currentPassword")}
           />
-          <PasswordField label="New Password" value={values.newPassword} error={errors.newPassword} showPassword={showPasswords} onChange={updateField("newPassword")} />
+          <PasswordField label="New Password" value={values.newPassword} error={errors.newPassword} onChange={updateField("newPassword")} />
           <PasswordField
             label="Confirm New Password"
             value={values.confirmPassword}
             error={errors.confirmPassword}
-            showPassword={showPasswords}
             onChange={updateField("confirmPassword")}
           />
-
-          <button
-            type="button"
-            onClick={() => setShowPasswords((current) => !current)}
-            className="hover:text-tanaw-green inline-flex items-center gap-2 rounded-md px-1 py-1 text-xs font-semibold text-gray-600 transition"
-          >
-            {showPasswords ? <EyeOff size={16} /> : <Eye size={16} />}
-            {showPasswords ? "Hide passwords" : "Show passwords"}
-          </button>
 
           <button
             type="submit"
@@ -145,10 +142,6 @@ export function ChangePasswordPage() {
           >
             <ShieldCheck size={19} />
             {isSubmitting ? "Updating..." : "Update Password"}
-          </button>
-
-          <button type="button" onClick={logout} className="w-full rounded-md px-4 py-1.5 text-sm font-semibold text-gray-600 transition hover:bg-gray-100 hover:text-gray-900">
-            Return to login
           </button>
         </div>
       </form>
@@ -160,15 +153,15 @@ function PasswordField({
   label,
   value,
   error,
-  showPassword,
   onChange,
 }: {
   label: string;
   value: string;
   error?: string;
-  showPassword: boolean;
   onChange: (event: ChangeEvent<HTMLInputElement>) => void;
 }) {
+  const [showPassword, setShowPassword] = useState(false);
+
   return (
     <label className="block">
       <span className="text-tanaw-navy mb-1.5 block text-sm font-semibold">{label}</span>
@@ -176,11 +169,19 @@ function PasswordField({
         <LockKeyhole size={18} className="absolute top-1/2 left-3 -translate-y-1/2 text-gray-400" />
         <input
           type={showPassword ? "text" : "password"}
-          className={cn("focus:ring-tanaw-green/25 w-full rounded-md border bg-gray-50 py-2.5 pr-4 pl-10 text-sm transition outline-none focus:ring-2", error ? "border-tanaw-red" : "border-gray-300")}
+          className={cn("focus:ring-tanaw-green/25 w-full rounded-md border bg-gray-50 py-2.5 pr-11 pl-10 text-sm transition outline-none focus:ring-2", error ? "border-tanaw-red" : "border-gray-300")}
           value={value}
           onChange={onChange}
           autoComplete="current-password"
         />
+        <button
+          type="button"
+          onClick={() => setShowPassword((current) => !current)}
+          className="hover:text-tanaw-green absolute top-1/2 right-3 -translate-y-1/2 rounded-sm p-1 text-gray-500 transition hover:bg-gray-100"
+          aria-label={showPassword ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+        >
+          {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+        </button>
       </div>
       {error && <span className="text-tanaw-red mt-1 block text-xs font-semibold">{error}</span>}
     </label>
