@@ -1,7 +1,10 @@
-import { MOCK_DATA, SYSTEM_LOGS } from "../lib/enterpriseMockData";
+export type SystemLogPeriod = "Current Period";
 
-export type SystemLogPeriod = keyof typeof SYSTEM_LOGS;
-export type Metrics = (typeof SYSTEM_LOGS)[SystemLogPeriod];
+export type Metrics = {
+  entries: number;
+  peak: number;
+  unique: number;
+};
 
 export type DemoBreakdown = {
   thisProvMale: string;
@@ -18,7 +21,12 @@ export type AuditEntry = {
   actor: string;
 };
 
-export type ReportRecord = (typeof MOCK_DATA.reports)[number] & {
+export type ReportRecord = {
+  id: string;
+  date: string;
+  status: string;
+  entries: number;
+  unique: number;
   period?: SystemLogPeriod;
   demo?: DemoBreakdown;
   notes?: string;
@@ -26,7 +34,26 @@ export type ReportRecord = (typeof MOCK_DATA.reports)[number] & {
   remarks?: string | null;
 };
 
-export type Camera = (typeof MOCK_DATA.cameras)[number];
+export type Camera = {
+  id: number;
+  name: string;
+  status: string;
+  zone: string;
+  fps: number;
+  resolution: string;
+  type: string;
+  rtsp: string;
+  config: {
+    tripwire: number;
+    roi: {
+      top: number;
+      left: number;
+      width: number;
+      height: number;
+    };
+    reverse: boolean;
+  };
+};
 export type ThemePreference = "light" | "dark" | "system";
 export type EnterpriseView = "dashboard" | "cameras" | "reports" | "profile" | "security";
 

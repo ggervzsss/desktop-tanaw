@@ -1,6 +1,6 @@
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
 import { Card } from "../../../components/Card";
-import { MOCK_DATA } from "../../../lib/enterpriseMockData";
+import { EMPTY_HISTORICAL_TREND } from "../../../lib/operationalDefaults";
 import type { TrendFilter } from "../types/dashboard";
 
 const trendOptions: TrendFilter[] = ["Today", "Week", "Month"];
@@ -32,7 +32,7 @@ export function HistoricalTrendChart({ trendFilter, onTrendFilterChange }: Histo
       </div>
       <div className="min-h-75 w-full flex-1">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={MOCK_DATA.historicalTrend[trendFilter]} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+          <AreaChart data={EMPTY_HISTORICAL_TREND[trendFilter]} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="colorVisitors" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#065f46" stopOpacity={0.2} />

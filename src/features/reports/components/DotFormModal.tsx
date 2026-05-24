@@ -92,7 +92,7 @@ export function DotFormModal({ onClose, period, metrics, demo, notes }: DotFormM
                     <tr>
                       <td className="border border-black p-2 text-xs font-semibold uppercase">SPL-MKT-01</td>
                       <td className="border border-black p-2 text-left align-top leading-tight">
-                        <span className="font-bold">SPL Market Branch</span>
+                        <span className="font-bold">Enterprise Node</span>
                         <br />
                         <span className="text-[10px]">{period}</span>
                       </td>

@@ -4,7 +4,7 @@ import { DotFormModal } from "./DotFormModal";
 import { ReportDraftPanel } from "./ReportDraftPanel";
 import { ReportLedgerTable } from "./ReportLedgerTable";
 import { SubmitReportDialog } from "./SubmitReportDialog";
-import { SYSTEM_LOGS } from "../../../lib/enterpriseMockData";
+import { EMPTY_METRICS, REPORTING_PERIODS } from "../../../lib/operationalDefaults";
 import type { DemoBreakdown, ReportRecord, SystemLogPeriod } from "../../../types/enterprise";
 
 type ReportsViewProps = {
@@ -14,7 +14,7 @@ type ReportsViewProps = {
 
 export function ReportsView({ reportsHistory, setReportsHistory }: ReportsViewProps) {
   const [activeReportId, setActiveReportId] = useState<string | null>(null);
-  const [period, setPeriod] = useState<SystemLogPeriod>("May 2026");
+  const [period, setPeriod] = useState<SystemLogPeriod>("Current Period");
   const [notes, setNotes] = useState("");
   const [demo, setDemo] = useState<DemoBreakdown>({
     thisProvMale: "",
@@ -31,18 +31,18 @@ export function ReportsView({ reportsHistory, setReportsHistory }: ReportsViewPr
   const activeReport = activeReportId ? (reportsHistory.find((r) => r.id === activeReportId) ?? null) : null;
   const isReadOnly = activeReport ? !["Draft", "Returned for Revision"].includes(activeReport.status) : false;
 
-  const metrics = SYSTEM_LOGS[period] ?? { entries: 0, peak: 0, unique: 0 };
-  const periodKeys = Object.keys(SYSTEM_LOGS) as SystemLogPeriod[];
+  const metrics = EMPTY_METRICS;
+  const periodKeys = [...REPORTING_PERIODS];
   const currIndex = periodKeys.indexOf(period);
   const prevPeriod = currIndex < periodKeys.length - 1 ? periodKeys[currIndex + 1] : null;
-  const prevMetrics = prevPeriod ? SYSTEM_LOGS[prevPeriod] : null;
+  const prevMetrics = prevPeriod ? EMPTY_METRICS : null;
   const uniqueTrend = prevMetrics ? Math.round(((metrics.unique - prevMetrics.unique) / prevMetrics.unique) * 100) : 0;
 
   const isError = metrics.peak > metrics.entries;
 
   const handleGenerateNew = () => {
     setActiveReportId(null);
-    setPeriod("May 2026");
+    setPeriod("Current Period");
     setNotes("");
     setDemo({
       thisProvMale: "",
@@ -56,7 +56,7 @@ export function ReportsView({ reportsHistory, setReportsHistory }: ReportsViewPr
 
   const handleViewReport = (report: ReportRecord) => {
     setActiveReportId(report.id);
-    setPeriod(report.period || "May 2026");
+    setPeriod(report.period || "Current Period");
     setNotes(report.notes || "");
     setDemo(
       report.demo || {
@@ -97,7 +97,7 @@ export function ReportsView({ reportsHistory, setReportsHistory }: ReportsViewPr
                 {
                   time: `${todayDate} ${now}`,
                   action: "Report Resubmitted",
-                  actor: "SPL Market Admin",
+                  actor: "Enterprise User",
                 },
               ],
             };
@@ -119,12 +119,12 @@ export function ReportsView({ reportsHistory, setReportsHistory }: ReportsViewPr
           {
             time: `${todayDate} ${now}`,
             action: "Draft Created",
-            actor: "SPL Market Admin",
+            actor: "Enterprise User",
           },
           {
             time: `${todayDate} ${now}`,
             action: "Report Submitted",
-            actor: "SPL Market Admin",
+            actor: "Enterprise User",
           },
         ],
         remarks: null,

@@ -1,4 +1,4 @@
-import { SYSTEM_LOGS } from "../../../lib/enterpriseMockData";
+import { REPORTING_PERIODS } from "../../../lib/operationalDefaults";
 import type { SystemLogPeriod } from "../../../types/enterprise";
 
 type ReportingPeriodSelectProps = {
@@ -17,7 +17,7 @@ export function ReportingPeriodSelect({ isReadOnly, period, setPeriod }: Reporti
         disabled={isReadOnly}
         className="w-full rounded-sm border border-gray-300 bg-white p-2.5 text-sm font-medium text-[#111827] transition-all outline-none focus:border-[#065f46] disabled:bg-gray-50"
       >
-        {Object.keys(SYSTEM_LOGS).map((value) => (
+        {REPORTING_PERIODS.map((value) => (
           <option key={value} value={value}>
             {value}
           </option>

@@ -50,7 +50,7 @@ export function ProfileView() {
             </div>
             <div>
               <label className="mb-2 block text-xs font-bold tracking-wider text-gray-500 uppercase">Business Email</label>
-              <input type="email" defaultValue="admin@splmarket.ph" className="w-full rounded-sm border border-gray-300 p-3 text-sm transition-colors outline-none focus:border-[#065f46]" required />
+              <input type="email" className="w-full rounded-sm border border-gray-300 p-3 text-sm transition-colors outline-none focus:border-[#065f46]" required />
             </div>
             <div>
               <label className="mb-2 block text-xs font-bold tracking-wider text-gray-500 uppercase">Contact Number</label>
@@ -65,7 +65,7 @@ export function ProfileView() {
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <label className="mb-1 block text-[10px] font-bold tracking-wider text-gray-400 uppercase">Current Node</label>
-                <div className="rounded-sm border border-gray-200 bg-gray-100 p-2.5 text-sm font-semibold text-[#111827]">SPL Market Branch</div>
+                <div className="rounded-sm border border-gray-200 bg-gray-100 p-2.5 text-sm font-semibold text-[#111827]">No enterprise profile linked</div>
               </div>
               <div>
                 <label className="mb-1 block text-[10px] font-bold tracking-wider text-gray-400 uppercase">LGU Affiliation</label>

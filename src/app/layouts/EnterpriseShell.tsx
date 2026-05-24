@@ -8,7 +8,7 @@ import { NotificationDropdown } from "../../features/notifications/components/No
 import { ReportsView } from "../../features/reports/components/ReportsView";
 import { ProfileView } from "../../features/profile/components/ProfileView";
 import { SecurityView } from "../../features/security/components/SecurityView";
-import { MOCK_DATA } from "../../lib/enterpriseMockData";
+import { EMPTY_CAMERAS, EMPTY_REPORTS } from "../../lib/operationalDefaults";
 import { routePaths } from "../router/routePaths";
 import { useAuthStore } from "../../features/login/stores/auth-store";
 import { ENTERPRISE_THEME_STORAGE_KEY, getInitialThemePreference, resolveThemePreference } from "../../features/security/utils/theme";
@@ -26,54 +26,13 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState("");
-  const [reportsHistory, setReportsHistory] = useState<ReportRecord[]>(MOCK_DATA.reports);
-  const [cameras, setCameras] = useState<EnterpriseCamera[]>(MOCK_DATA.cameras);
+  const [reportsHistory, setReportsHistory] = useState<ReportRecord[]>(EMPTY_REPORTS);
+  const [cameras, setCameras] = useState<EnterpriseCamera[]>(EMPTY_CAMERAS);
 
   // Notification Engine State
-  const initialNotifs = [
-    {
-      id: 1,
-      type: "critical",
-      message: "Dining Area - Cam 3 went offline. Edge processing stopped.",
-      time: "10 mins ago",
-      read: false,
-      target: "cameras",
-    },
-    {
-      id: 2,
-      type: "critical",
-      message: "Overcrowding alert: Occupancy exceeded safe threshold.",
-      time: "1 hour ago",
-      read: false,
-      target: "dashboard",
-    },
-    {
-      id: 3,
-      type: "warning",
-      message: "Unstable RTSP stream quality detected on Rear Exit.",
-      time: "2 hours ago",
-      read: false,
-      target: "cameras",
-    },
-    {
-      id: 4,
-      type: "warning",
-      message: "Pending submission: May 2026 LGU Attraction Report.",
-      time: "1 day ago",
-      read: false,
-      target: "reports",
-    },
-    {
-      id: 5,
-      type: "info",
-      message: "Weekly report REP-2026-05-08 was consolidated by Admin.",
-      time: "2 days ago",
-      read: true,
-      target: "reports",
-    },
-  ];
-  const [notifications, setNotifications] = useState<EnterpriseNotification[]>(initialNotifs as EnterpriseNotification[]);
-  const [toasts, setToasts] = useState<EnterpriseNotification[]>((initialNotifs as EnterpriseNotification[]).filter((n) => n.type === "critical" && !n.read));
+  const initialNotifs: EnterpriseNotification[] = [];
+  const [notifications, setNotifications] = useState<EnterpriseNotification[]>(initialNotifs);
+  const [toasts, setToasts] = useState<EnterpriseNotification[]>([]);
   const [occupancyThreshold, setOccupancyThreshold] = useState(90);
   const [showNotifSettings, setShowNotifSettings] = useState(false);
 
@@ -169,7 +128,7 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
         <div className="mt-auto border-t border-white/10 p-4">
           <div className="rounded-xl bg-black/20 p-3">
             <p className="mb-1 text-[10px] font-bold text-white/60 uppercase">Current Node</p>
-            <p className="truncate text-sm font-semibold">SPL Market Branch</p>
+            <p className="truncate text-sm font-semibold">{user?.name ?? "Enterprise Node"}</p>
           </div>
         </div>
       </aside>
@@ -224,7 +183,7 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
               >
                 <div className="bg-tanaw-navy flex h-8 w-8 items-center justify-center rounded-full font-['Bai_Jamjuree'] text-sm font-bold text-white">SP</div>
                 <div className="hidden text-left sm:block">
-                  <p className="text-tanaw-navy text-xs leading-none font-bold">{user?.name ?? "SPL Market"}</p>
+                  <p className="text-tanaw-navy text-xs leading-none font-bold">{user?.name ?? "Enterprise User"}</p>
                   <p className="mt-1 text-[10px] text-gray-500">{user?.role ?? "enterprise"} Role</p>
                 </div>
                 <ChevronDown size={14} className="text-gray-400" />
@@ -234,8 +193,8 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
               {isProfileOpen && (
                 <div className="animate-in slide-in-from-top-2 absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-xl duration-200 dark:border-gray-800 dark:bg-[#1e293b]">
                   <div className="border-b border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-[#0f172a]">
-                    <p className="text-tanaw-navy text-sm font-bold dark:text-gray-100">{user?.name ?? "SPL Market Admin"}</p>
-                    <p className="mt-0.5 truncate text-xs text-gray-500">{user?.email ?? "admin@splmarket.ph"}</p>
+                    <p className="text-tanaw-navy text-sm font-bold dark:text-gray-100">{user?.name ?? "Enterprise User"}</p>
+                    <p className="mt-0.5 truncate text-xs text-gray-500">{user?.email ?? "No account email"}</p>
                   </div>
                   <div className="p-2">
                     <button

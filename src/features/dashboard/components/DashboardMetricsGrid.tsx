@@ -1,15 +1,18 @@
 import { Activity, Info, TrendingUp, User, Users } from "lucide-react";
 import { Card } from "../../../components/Card";
-import { MOCK_DATA } from "../../../lib/enterpriseMockData";
+import { EMPTY_OCCUPANCY } from "../../../lib/operationalDefaults";
 
 export function DashboardMetricsGrid() {
+  const occupancy = EMPTY_OCCUPANCY;
+  const utilizationWidth = `${Math.min(100, Math.round((occupancy.current / occupancy.capacity) * 100))}%`;
+
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
       <Card className="group relative overflow-hidden border-l-4 border-l-[#065f46] p-5">
         <div className="relative z-10 flex items-start justify-between">
           <div>
             <p className="text-xs font-bold tracking-wider text-gray-500 uppercase">Net Occupancy</p>
-            <h3 className="mt-1 text-3xl font-bold tracking-tight text-[#111827]">{MOCK_DATA.occupancy.current}</h3>
+            <h3 className="mt-1 text-3xl font-bold tracking-tight text-[#111827]">{occupancy.current}</h3>
             <p className="mt-1 text-xs font-medium text-gray-500">Currently Inside</p>
           </div>
           <div className="rounded-sm bg-[#065f46]/10 p-3 text-[#065f46]">
@@ -17,7 +20,7 @@ export function DashboardMetricsGrid() {
           </div>
         </div>
         <div className="relative z-10 mt-4 h-1.5 w-full rounded-full bg-gray-100">
-          <div className="h-1.5 rounded-full bg-[#065f46] transition-all duration-1000" style={{ width: `${(MOCK_DATA.occupancy.current / MOCK_DATA.occupancy.capacity) * 100}%` }}></div>
+          <div className="h-1.5 rounded-full bg-[#065f46] transition-all duration-1000" style={{ width: utilizationWidth }}></div>
         </div>
       </Card>
 
@@ -26,9 +29,9 @@ export function DashboardMetricsGrid() {
           <div>
             <p className="text-xs font-bold tracking-wider text-gray-500 uppercase">Entry & Exit Flow</p>
             <div className="mt-1 flex items-baseline gap-2">
-              <h3 className="text-3xl font-bold tracking-tight text-[#111827]">{MOCK_DATA.occupancy.entryToday}</h3>
+              <h3 className="text-3xl font-bold tracking-tight text-[#111827]">{occupancy.entryToday}</h3>
               <span className="text-lg font-bold text-gray-300">/</span>
-              <h3 className="text-3xl font-bold tracking-tight text-gray-500">{MOCK_DATA.occupancy.exitToday}</h3>
+              <h3 className="text-3xl font-bold tracking-tight text-gray-500">{occupancy.exitToday}</h3>
             </div>
             <p className="mt-1 text-xs font-medium text-gray-500">Cumulative (In / Out)</p>
           </div>
@@ -50,7 +53,7 @@ export function DashboardMetricsGrid() {
                 </div>
               </div>
             </div>
-            <h3 className="mt-1 text-3xl font-bold tracking-tight text-[#065f46]">{MOCK_DATA.occupancy.uniqueEstimated}</h3>
+            <h3 className="mt-1 text-3xl font-bold tracking-tight text-[#065f46]">{occupancy.uniqueEstimated}</h3>
             <p className="mt-1 text-xs font-medium text-gray-500">Deduplicated Baseline</p>
           </div>
           <div className="rounded-sm bg-[#065f46]/10 p-3 text-[#065f46]">
@@ -63,8 +66,8 @@ export function DashboardMetricsGrid() {
         <div className="flex items-start justify-between">
           <div>
             <p className="text-xs font-bold tracking-wider text-gray-500 uppercase">Peak & Utilization</p>
-            <h3 className="mt-1 text-3xl font-bold tracking-tight text-[#111827]">{MOCK_DATA.occupancy.peakToday}</h3>
-            <p className="mt-1 text-xs font-bold text-[#065f46]">{MOCK_DATA.occupancy.utilizationRate}% Max Utilization</p>
+            <h3 className="mt-1 text-3xl font-bold tracking-tight text-[#111827]">{occupancy.peakToday}</h3>
+            <p className="mt-1 text-xs font-bold text-[#065f46]">{occupancy.utilizationRate}% Max Utilization</p>
           </div>
           <div className="rounded-sm bg-gray-100 p-3 text-[#111827]">
             <TrendingUp size={20} />
