@@ -12,10 +12,10 @@ export function ReportDraftAlerts({ activeReport, isError, isReadOnly }: ReportD
     <>
       {activeReport?.status === "Returned for Revision" && (
         <div className="mb-5 rounded-sm border border-[#ffd200]/40 bg-[#ffd200]/10 p-4">
-          <h4 className="mb-2 flex items-center gap-1.5 text-[10px] font-bold tracking-wider text-[#a40e0e] uppercase">
+          <h4 className="text-tanaw-red mb-2 flex items-center gap-1.5 text-[10px] font-bold tracking-wider uppercase">
             <MessageSquare size={14} /> Staff Remarks
           </h4>
-          <p className="text-xs leading-relaxed font-medium text-[#a40e0e]">{activeReport.remarks}</p>
+          <p className="text-tanaw-red text-xs leading-relaxed font-medium">{activeReport.remarks}</p>
         </div>
       )}
 

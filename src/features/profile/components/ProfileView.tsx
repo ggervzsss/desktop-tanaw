@@ -30,7 +30,7 @@ export function ProfileView() {
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
               <Upload size={20} className="text-white" />
             </div>
-            <span className="font-['Bai_Jamjuree'] text-2xl font-bold text-[#2a3063] transition-opacity group-hover:opacity-0">SP</span>
+            <span className="text-tanaw-navy font-['Bai_Jamjuree'] text-2xl font-bold transition-opacity group-hover:opacity-0">SP</span>
           </div>
           <div>
             <h3 className="text-lg font-bold text-[#111827]">Establishment Logo</h3>

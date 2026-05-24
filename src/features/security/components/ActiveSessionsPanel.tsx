@@ -8,7 +8,7 @@ export function ActiveSessionsPanel() {
         <h3 className="flex items-center gap-2 text-sm font-bold tracking-wider text-[#111827] uppercase">
           <MonitorSmartphone size={16} className="text-[#065f46]" /> Active Sessions
         </h3>
-        <button className="text-[10px] font-bold text-[#a40e0e] hover:text-red-700 hover:underline sm:text-xs">Sign Out of All Other Devices</button>
+        <button className="text-tanaw-red text-[10px] font-bold hover:text-red-700 hover:underline sm:text-xs">Sign Out of All Other Devices</button>
       </div>
       <div className="overflow-x-auto rounded-sm border border-gray-200">
         <table className="w-full text-left text-sm whitespace-nowrap">

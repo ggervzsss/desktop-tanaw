@@ -16,7 +16,7 @@ type NotificationDropdownProps = {
 };
 
 const notificationIconByType = (type: EnterpriseNotification["type"]) => {
-  if (type === "critical") return <AlertTriangle size={16} className="text-[#a40e0e]" />;
+  if (type === "critical") return <AlertTriangle size={16} className="text-tanaw-red" />;
   if (type === "warning") return <AlertCircle size={16} className="text-[#ffd200]" />;
   return <CheckCircle size={16} className="text-[#2d5eff]" />;
 };
@@ -40,7 +40,7 @@ export function NotificationDropdown({
         className={`relative rounded-full p-2.5 transition-colors ${isOpen ? "bg-gray-100 text-[#065f46]" : "border border-gray-100 bg-white text-gray-500 shadow-sm hover:bg-gray-50"}`}
       >
         <Bell size={20} />
-        {unreadCount > 0 && <span className="absolute top-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#a40e0e]"></span>}
+        {unreadCount > 0 && <span className="bg-tanaw-red absolute top-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white"></span>}
       </button>
 
       {isOpen && (
@@ -48,7 +48,7 @@ export function NotificationDropdown({
           <div className="flex shrink-0 items-center justify-between border-b border-gray-100 bg-gray-50 p-3">
             <h3 className="flex items-center gap-2 text-sm font-bold text-[#111827]">
               System Alerts
-              {unreadCount > 0 && <span className="rounded-sm bg-[#a40e0e] px-1.5 py-0.5 text-[10px] leading-none text-white shadow-sm">{unreadCount}</span>}
+              {unreadCount > 0 && <span className="bg-tanaw-red rounded-sm px-1.5 py-0.5 text-[10px] leading-none text-white shadow-sm">{unreadCount}</span>}
             </h3>
             <div className="flex items-center gap-3">
               <button onClick={onMarkAllRead} className="text-[10px] font-bold tracking-wider text-[#2d5eff] uppercase hover:underline">

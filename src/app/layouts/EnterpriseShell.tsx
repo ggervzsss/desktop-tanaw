@@ -179,7 +179,7 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
         {/* Top Header */}
         <header className="sticky top-0 z-10 flex h-20 items-center justify-between border-b border-gray-200/70 bg-white/80 px-8 backdrop-blur-md transition-colors duration-300 dark:border-gray-800 dark:bg-[#111827]/90">
           <div>
-            <h2 className="font-['Bai_Jamjuree'] text-2xl font-bold text-[#2a3063]">
+            <h2 className="text-tanaw-navy font-['Bai_Jamjuree'] text-2xl font-bold">
               {activeView === "dashboard" && "Establishment Overview"}
               {activeView === "cameras" && "Edge Device Management"}
               {activeView === "reports" && "LGU Reporting"}
@@ -222,9 +222,9 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
                 }}
                 className="flex items-center gap-3 rounded-full border border-gray-200 bg-white p-1.5 pr-3 shadow-sm transition-colors hover:border-gray-300"
               >
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#2a3063] font-['Bai_Jamjuree'] text-sm font-bold text-white">SP</div>
+                <div className="bg-tanaw-navy flex h-8 w-8 items-center justify-center rounded-full font-['Bai_Jamjuree'] text-sm font-bold text-white">SP</div>
                 <div className="hidden text-left sm:block">
-                  <p className="text-xs leading-none font-bold text-[#2a3063]">{user?.name ?? "SPL Market"}</p>
+                  <p className="text-tanaw-navy text-xs leading-none font-bold">{user?.name ?? "SPL Market"}</p>
                   <p className="mt-1 text-[10px] text-gray-500">{user?.role ?? "enterprise"} Role</p>
                 </div>
                 <ChevronDown size={14} className="text-gray-400" />
@@ -234,7 +234,7 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
               {isProfileOpen && (
                 <div className="animate-in slide-in-from-top-2 absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-xl duration-200 dark:border-gray-800 dark:bg-[#1e293b]">
                   <div className="border-b border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-[#0f172a]">
-                    <p className="text-sm font-bold text-[#2a3063] dark:text-gray-100">{user?.name ?? "SPL Market Admin"}</p>
+                    <p className="text-tanaw-navy text-sm font-bold dark:text-gray-100">{user?.name ?? "SPL Market Admin"}</p>
                     <p className="mt-0.5 truncate text-xs text-gray-500">{user?.email ?? "admin@splmarket.ph"}</p>
                   </div>
                   <div className="p-2">
@@ -257,7 +257,7 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
                       <Shield size={16} /> Security & Data Control
                     </button>
                     <div className="mx-2 my-2 h-px bg-gray-100 dark:bg-gray-800"></div>
-                    <button onClick={handleLogout} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-[#a40e0e] transition-colors hover:bg-red-50 dark:hover:bg-red-900/30">
+                    <button onClick={handleLogout} className="text-tanaw-red flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-red-50 dark:hover:bg-red-900/30">
                       <LogOut size={16} /> Sign Out
                     </button>
                   </div>

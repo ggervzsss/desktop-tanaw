@@ -12,7 +12,7 @@ export function AnalyticsProtocolBanner() {
           The <strong>Estimated Unique People Count</strong> metric distinguishes distinct visitors from total entry events using edge-processing logic to reduce duplicate counts (e.g., staff
           re-entering). This system-generated value is required for official LGU tourism reports and cannot be manually overridden by Enterprise accounts.
         </p>
-        <div className="mt-3 flex w-fit items-center gap-2 rounded-sm border border-[#ffd200]/30 bg-[#ffd200]/10 px-3 py-2 text-[#a40e0e]">
+        <div className="text-tanaw-red mt-3 flex w-fit items-center gap-2 rounded-sm border border-[#ffd200]/30 bg-[#ffd200]/10 px-3 py-2">
           <AlertTriangle size={14} />
           <p className="text-[10px] font-bold tracking-wide uppercase">Note: Accuracy may be affected by camera angle, lighting, occlusion, and crowd density.</p>
         </div>

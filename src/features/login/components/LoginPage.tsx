@@ -80,36 +80,36 @@ export function LoginPage() {
         <div className="mb-8 flex flex-col items-center text-center">
           <img src={citySeal} alt="San Pedro Logo" className="mb-4 h-24 w-24 drop-shadow-md" />
           <h1 className="font-display text-tanaw-green text-3xl font-bold">TANAW</h1>
-          <p className="mt-1 text-sm font-semibold tracking-wide text-[#2a3063]">System Login Portal</p>
+          <p className="text-tanaw-navy mt-1 text-sm font-semibold tracking-wide">System Login Portal</p>
         </div>
 
         <div className="space-y-5">
           <label className="block">
-            <span className="mb-2 block text-sm font-semibold text-[#2a3063]">Username</span>
+            <span className="text-tanaw-navy mb-2 block text-sm font-semibold">Username</span>
             <div className="relative">
               <UserRound size={18} className="absolute top-1/2 left-3 -translate-y-1/2 text-gray-400" />
               <input
                 className={cn(
-                  "w-full rounded-md border bg-gray-50 py-3 pr-4 pl-10 text-sm transition outline-none focus:ring-2 focus:ring-[#055b25]/25",
-                  errors.username ? "border-[#a40e0e]" : "border-gray-300",
+                  "focus:ring-tanaw-green/25 w-full rounded-md border bg-gray-50 py-3 pr-4 pl-10 text-sm transition outline-none focus:ring-2",
+                  errors.username ? "border-tanaw-red" : "border-gray-300",
                 )}
                 placeholder="admin or staff username"
                 value={values.username}
                 onChange={updateField("username")}
               />
             </div>
-            {errors.username && <span className="mt-1 block text-xs font-semibold text-[#a40e0e]">{errors.username}</span>}
+            {errors.username && <span className="text-tanaw-red mt-1 block text-xs font-semibold">{errors.username}</span>}
           </label>
 
           <label className="block">
-            <span className="mb-2 block text-sm font-semibold text-[#2a3063]">Password</span>
+            <span className="text-tanaw-navy mb-2 block text-sm font-semibold">Password</span>
             <div className="relative">
               <LockKeyhole size={18} className="absolute top-1/2 left-3 -translate-y-1/2 text-gray-400" />
               <input
                 type={showPassword ? "text" : "password"}
                 className={cn(
-                  "w-full rounded-md border bg-gray-50 py-3 pr-11 pl-10 text-sm transition outline-none focus:ring-2 focus:ring-[#055b25]/25",
-                  errors.password ? "border-[#a40e0e]" : "border-gray-300",
+                  "focus:ring-tanaw-green/25 w-full rounded-md border bg-gray-50 py-3 pr-11 pl-10 text-sm transition outline-none focus:ring-2",
+                  errors.password ? "border-tanaw-red" : "border-gray-300",
                 )}
                 placeholder="Enter password"
                 value={values.password}
@@ -124,13 +124,13 @@ export function LoginPage() {
                 {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
               </button>
             </div>
-            {errors.password && <span className="mt-1 block text-xs font-semibold text-[#a40e0e]">{errors.password}</span>}
+            {errors.password && <span className="text-tanaw-red mt-1 block text-xs font-semibold">{errors.password}</span>}
           </label>
 
           <button
             type="submit"
             disabled={loginMutation.isPending}
-            className="bg-tanaw-green flex w-full items-center justify-center gap-2 rounded-md px-4 py-3 font-bold text-white shadow-lg shadow-[#055b25]/25 transition hover:bg-[#044a1e] disabled:cursor-not-allowed disabled:opacity-70"
+            className="bg-tanaw-green shadow-tanaw-green/25 hover:bg-tanaw-green-dark flex w-full items-center justify-center gap-2 rounded-md px-4 py-3 font-bold text-white shadow-lg transition disabled:cursor-not-allowed disabled:opacity-70"
           >
             <Shield size={19} />
             {loginMutation.isPending ? "Verifying..." : "Secure Login"}

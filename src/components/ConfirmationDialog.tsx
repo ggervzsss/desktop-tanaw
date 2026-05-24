@@ -17,9 +17,9 @@ type ConfirmationDialogProps = {
 
 const variantStyles: Record<ConfirmationDialogVariant, { accent: string; button: string; icon: string }> = {
   danger: {
-    accent: "border-[#a40e0e]",
+    accent: "border-tanaw-red",
     button: "bg-[#a40e0e] hover:bg-[#7f0b0b]",
-    icon: "text-[#a40e0e]",
+    icon: "text-tanaw-red",
   },
   default: {
     accent: "border-[#065f46]",
