@@ -17,6 +17,11 @@ export function useLogin(redirectTo?: string) {
     mutationFn: (values: LoginFormValues) => login(values),
     onSuccess: (session) => {
       setSession(session);
+      if (session.user.mustChangePassword) {
+        notifySuccess("Temporary credentials verified.");
+        navigate(routePaths.changePassword, { replace: true });
+        return;
+      }
       notifySuccess("Secure login successful.");
       navigate(redirectTo ?? getLandingRoute(session.user.role), { replace: true });
     },

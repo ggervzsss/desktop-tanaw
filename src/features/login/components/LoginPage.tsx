@@ -14,7 +14,7 @@ const citySeal = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ef/Seal
 
 type FormErrors = Partial<Record<keyof LoginFormValues, string>>;
 
-const getAuthenticatedRoute = () => routePaths.enterpriseCameras;
+const getAuthenticatedRoute = (mustChangePassword?: boolean) => (mustChangePassword ? routePaths.changePassword : routePaths.enterpriseCameras);
 
 type LoginLocationState = {
   from?: {
@@ -25,6 +25,7 @@ type LoginLocationState = {
 
 export function LoginPage() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const user = useAuthStore((state) => state.user);
   const location = useLocation();
   const locationState = location.state as LoginLocationState | null;
   const redirectTo = locationState?.from?.pathname ? `${locationState.from.pathname}${locationState.from.search ?? ""}` : undefined;
@@ -37,7 +38,7 @@ export function LoginPage() {
   const [errors, setErrors] = useState<FormErrors>({});
 
   if (isAuthenticated) {
-    return <Navigate to={getAuthenticatedRoute()} replace />;
+    return <Navigate to={getAuthenticatedRoute(user?.mustChangePassword)} replace />;
   }
 
   const updateField = (field: keyof LoginFormValues) => (event: ChangeEvent<HTMLInputElement>) => {
