@@ -93,7 +93,7 @@ export function LoginPage() {
                   "focus:ring-tanaw-green/25 w-full rounded-md border bg-gray-50 py-3 pr-4 pl-10 text-sm transition outline-none focus:ring-2",
                   errors.username ? "border-tanaw-red" : "border-gray-300",
                 )}
-                placeholder="admin or staff username"
+                placeholder="Enterprise ID or contact email"
                 value={values.username}
                 onChange={updateField("username")}
               />
@@ -137,7 +137,7 @@ export function LoginPage() {
           </button>
         </div>
 
-        <p className="mt-6 text-center text-xs font-medium text-gray-500">Enterprise desktop access is restricted to registered establishment operators.</p>
+        <p className="mt-6 text-center text-xs font-medium text-gray-500">Use the Enterprise ID shown after setup, or the registered contact email.</p>
       </motion.form>
     </div>
   );
