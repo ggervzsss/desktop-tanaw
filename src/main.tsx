@@ -9,7 +9,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   </React.StrictMode>,
 );
 
-// Use contextBridge
-window.ipcRenderer.on("main-process-message", (_event, message) => {
+// Docker serves the renderer in a browser, where Electron's preload API is absent.
+window.ipcRenderer?.on("main-process-message", (_event, message) => {
   console.log(message);
 });
