@@ -1,4 +1,5 @@
 import { type ChangeEvent, type FormEvent, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Navigate, useNavigate } from "react-router-dom";
 import { ArrowLeft, Eye, EyeOff, KeyRound, LockKeyhole, ShieldCheck } from "lucide-react";
 import { routePaths } from "../../../app/router/routePaths";
@@ -28,6 +29,7 @@ const initialValues: PasswordValues = {
 
 export function ChangePasswordPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
   const setSession = useAuthStore((state) => state.setSession);
   const logout = useAuthStore((state) => state.logout);
@@ -74,6 +76,7 @@ export function ChangePasswordPage() {
     setIsSubmitting(true);
     try {
       const session = await changePassword(values.currentPassword, values.newPassword);
+      queryClient.removeQueries({ queryKey: ["enterprise-current-user"] });
       setSession(session);
       notifySuccess("Password updated.");
       navigate(routePaths.enterpriseCameras, { replace: true });
@@ -88,6 +91,7 @@ export function ChangePasswordPage() {
     try {
       await logoutRequest();
     } finally {
+      queryClient.removeQueries({ queryKey: ["enterprise-current-user"] });
       logout();
     }
   };

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Camera, ChevronDown, FileText, LayoutDashboard, LogOut, Shield, User } from "lucide-react";
 import { CriticalAlertToasts } from "../../features/alerts/components/CriticalAlertToasts";
@@ -22,6 +22,7 @@ type EnterpriseShellProps = {
 
 export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProps) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const logout = useAuthStore((state) => state.logout);
   const user = useAuthStore((state) => state.user);
   const token = useAuthStore((state) => state.token);
@@ -47,7 +48,7 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
   const initials = getInitials(displayName);
 
   const currentUserQuery = useQuery({
-    queryKey: ["enterprise-current-user"],
+    queryKey: ["enterprise-current-user", token],
     queryFn: getCurrentUser,
     enabled: Boolean(token),
     staleTime: 60_000,
@@ -116,6 +117,7 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
     try {
       await logoutRequest();
     } finally {
+      queryClient.removeQueries({ queryKey: ["enterprise-current-user"] });
       logout();
       navigate(routePaths.login, { replace: true });
     }

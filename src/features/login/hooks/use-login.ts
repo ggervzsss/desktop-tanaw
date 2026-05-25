@@ -1,4 +1,4 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { routePaths } from "../../../app/router/routePaths";
 import { notifyError, notifySuccess } from "../../toasts/services/toast-service";
@@ -11,11 +11,13 @@ const getLandingRoute = (role: AuthRole) => (role === "enterprise" ? routePaths.
 
 export function useLogin(redirectTo?: string) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const setSession = useAuthStore((state) => state.setSession);
 
   return useMutation({
     mutationFn: (values: LoginFormValues) => login(values),
     onSuccess: (session) => {
+      queryClient.removeQueries({ queryKey: ["enterprise-current-user"] });
       setSession(session);
       if (session.user.mustChangePassword) {
         notifySuccess("Temporary credentials verified.");
