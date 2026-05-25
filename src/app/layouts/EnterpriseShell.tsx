@@ -28,6 +28,7 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
   const token = useAuthStore((state) => state.token);
   const updateUser = useAuthStore((state) => state.updateUser);
   const contentScrollRef = useRef<HTMLDivElement>(null);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
   const [activeView, setActiveView] = useState<EnterpriseView>(initialView);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -111,6 +112,19 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
   useEffect(() => {
     contentScrollRef.current?.scrollTo({ top: 0, left: 0 });
   }, [activeView]);
+
+  useEffect(() => {
+    if (!isProfileOpen) return undefined;
+
+    const closeOnOutsidePointerDown = (event: PointerEvent) => {
+      if (!profileMenuRef.current?.contains(event.target as Node)) {
+        setIsProfileOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", closeOnOutsidePointerDown);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointerDown);
+  }, [isProfileOpen]);
 
   const handleLogout = async () => {
     setIsProfileOpen(false);
@@ -211,7 +225,7 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
             />
 
             {/* Profile Dropdown */}
-            <div className="relative">
+            <div ref={profileMenuRef} className="relative">
               <button
                 onClick={() => {
                   setIsProfileOpen(!isProfileOpen);
@@ -224,7 +238,7 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
                   <p className="text-tanaw-navy text-xs leading-none font-bold">{displayName}</p>
                   <p className="mt-1 text-[10px] text-gray-500">{user?.role ?? "enterprise"} Role</p>
                 </div>
-                <ChevronDown size={14} className="text-gray-400" />
+                <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 ${isProfileOpen ? "rotate-180" : ""}`} />
               </button>
 
               {/* Profile Menu */}
