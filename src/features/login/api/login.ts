@@ -26,3 +26,13 @@ export async function changePassword(currentPassword: string, newPassword: strin
 
   return normalizeSession(response.data);
 }
+
+export async function getCurrentUser() {
+  const response = await staffApi.get<LoginResponse["user"]>("/auth/me");
+
+  return normalizeSession({ token: "", user: response.data }).user;
+}
+
+export async function logout() {
+  await staffApi.post("/auth/logout");
+}

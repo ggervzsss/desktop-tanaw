@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Camera, ChevronDown, FileText, LayoutDashboard, LogOut, Shield, User } from "lucide-react";
 import { CriticalAlertToasts } from "../../features/alerts/components/CriticalAlertToasts";
@@ -11,6 +12,7 @@ import { SecurityView } from "../../features/security/components/SecurityView";
 import { EMPTY_CAMERAS, EMPTY_REPORTS } from "../../lib/operationalDefaults";
 import { routePaths } from "../router/routePaths";
 import { useAuthStore } from "../../features/login/stores/auth-store";
+import { getCurrentUser, logout as logoutRequest } from "../../features/login/api/login";
 import { ENTERPRISE_THEME_STORAGE_KEY, getInitialThemePreference, resolveThemePreference } from "../../features/security/utils/theme";
 import type { Camera as EnterpriseCamera, EnterpriseNotification, EnterpriseView, ReportRecord, ThemePreference } from "../../types/enterprise";
 
@@ -22,6 +24,8 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
   const navigate = useNavigate();
   const logout = useAuthStore((state) => state.logout);
   const user = useAuthStore((state) => state.user);
+  const token = useAuthStore((state) => state.token);
+  const updateUser = useAuthStore((state) => state.updateUser);
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const [activeView, setActiveView] = useState<EnterpriseView>(initialView);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -39,6 +43,28 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
 
   // Theme State
   const [theme, setTheme] = useState<ThemePreference>(getInitialThemePreference);
+  const displayName = user?.enterpriseName ?? user?.name ?? "Enterprise User";
+  const initials = getInitials(displayName);
+
+  const currentUserQuery = useQuery({
+    queryKey: ["enterprise-current-user"],
+    queryFn: getCurrentUser,
+    enabled: Boolean(token),
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    if (currentUserQuery.data) {
+      updateUser(currentUserQuery.data);
+    }
+  }, [currentUserQuery.data, updateUser]);
+
+  useEffect(() => {
+    if (currentUserQuery.isError) {
+      logout();
+      navigate(routePaths.login, { replace: true });
+    }
+  }, [currentUserQuery.isError, logout, navigate]);
 
   // Time updater & Theme Sync
   useEffect(() => {
@@ -85,9 +111,14 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
     contentScrollRef.current?.scrollTo({ top: 0, left: 0 });
   }, [activeView]);
 
-  const handleLogout = () => {
-    logout();
-    navigate(routePaths.login, { replace: true });
+  const handleLogout = async () => {
+    setIsProfileOpen(false);
+    try {
+      await logoutRequest();
+    } finally {
+      logout();
+      navigate(routePaths.login, { replace: true });
+    }
   };
 
   const unreadCount = notifications.filter((n) => !n.read).length;
@@ -186,9 +217,9 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
                 }}
                 className="flex items-center gap-3 rounded-full border border-gray-200 bg-white p-1.5 pr-3 shadow-sm transition-colors hover:border-gray-300"
               >
-                <div className="bg-tanaw-navy flex h-8 w-8 items-center justify-center rounded-full font-['Bai_Jamjuree'] text-sm font-bold text-white">SP</div>
+                <div className="bg-tanaw-navy flex h-8 w-8 items-center justify-center rounded-full font-['Bai_Jamjuree'] text-sm font-bold text-white">{initials}</div>
                 <div className="hidden text-left sm:block">
-                  <p className="text-tanaw-navy text-xs leading-none font-bold">{user?.name ?? "Enterprise User"}</p>
+                  <p className="text-tanaw-navy text-xs leading-none font-bold">{displayName}</p>
                   <p className="mt-1 text-[10px] text-gray-500">{user?.role ?? "enterprise"} Role</p>
                 </div>
                 <ChevronDown size={14} className="text-gray-400" />
@@ -198,7 +229,7 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
               {isProfileOpen && (
                 <div className="animate-in slide-in-from-top-2 absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-xl duration-200 dark:border-gray-800 dark:bg-[#1e293b]">
                   <div className="border-b border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-[#0f172a]">
-                    <p className="text-tanaw-navy text-sm font-bold dark:text-gray-100">{user?.name ?? "Enterprise User"}</p>
+                    <p className="text-tanaw-navy text-sm font-bold dark:text-gray-100">{displayName}</p>
                     <p className="mt-0.5 truncate text-xs text-gray-500">{user?.email ?? "No account email"}</p>
                   </div>
                   <div className="p-2">
@@ -301,4 +332,16 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
       />
     </div>
   );
+}
+
+function getInitials(value: string) {
+  const initials = value
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+
+  return initials || "EU";
 }

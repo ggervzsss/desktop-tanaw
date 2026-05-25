@@ -6,8 +6,16 @@ export type AuthUser = {
   displayName?: string;
   email: string;
   role: AuthRole;
+  title?: string;
+  phone?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
   enterpriseId?: string | null;
   enterpriseName?: string | null;
+  category?: string | null;
+  managerName?: string | null;
+  barangay?: string | null;
+  address?: string | null;
   mustChangePassword?: boolean;
 };
 

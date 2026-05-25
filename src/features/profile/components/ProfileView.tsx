@@ -1,10 +1,15 @@
 import { type FormEvent, useState } from "react";
 import { Check, RefreshCw, Save, Shield, Upload } from "lucide-react";
 import { Card } from "../../../components/Card";
+import { useAuthStore } from "../../login/stores/auth-store";
 
 export function ProfileView() {
+  const user = useAuthStore((state) => state.user);
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const enterpriseName = user?.enterpriseName ?? user?.displayName ?? user?.name ?? "Enterprise Account";
+  const managerName = user?.managerName ?? user?.name ?? user?.displayName ?? "Not provided";
+  const initials = getInitials(enterpriseName);
 
   const handleSave = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -30,7 +35,7 @@ export function ProfileView() {
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
               <Upload size={20} className="text-white" />
             </div>
-            <span className="text-tanaw-navy font-['Bai_Jamjuree'] text-2xl font-bold transition-opacity group-hover:opacity-0">SP</span>
+            <span className="text-tanaw-navy font-['Bai_Jamjuree'] text-2xl font-bold transition-opacity group-hover:opacity-0">{initials}</span>
           </div>
           <div>
             <h3 className="text-lg font-bold text-[#111827]">Establishment Logo</h3>
@@ -46,15 +51,23 @@ export function ProfileView() {
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <div>
               <label className="mb-2 block text-xs font-bold tracking-wider text-gray-500 uppercase">Full Name / Lead Admin</label>
-              <input type="text" defaultValue="Juan Dela Cruz" className="w-full rounded-sm border border-gray-300 p-3 text-sm transition-colors outline-none focus:border-[#065f46]" required />
+              <input key={`manager-${managerName}`} type="text" defaultValue={managerName} className="w-full rounded-sm border border-gray-300 p-3 text-sm transition-colors outline-none focus:border-[#065f46]" required />
             </div>
             <div>
               <label className="mb-2 block text-xs font-bold tracking-wider text-gray-500 uppercase">Business Email</label>
-              <input type="email" className="w-full rounded-sm border border-gray-300 p-3 text-sm transition-colors outline-none focus:border-[#065f46]" required />
+              <input key={`email-${user?.email ?? ""}`} type="email" defaultValue={user?.email ?? ""} className="w-full rounded-sm border border-gray-300 p-3 text-sm transition-colors outline-none focus:border-[#065f46]" required />
             </div>
             <div>
               <label className="mb-2 block text-xs font-bold tracking-wider text-gray-500 uppercase">Contact Number</label>
-              <input type="tel" defaultValue="+63 917 123 4567" className="w-full rounded-sm border border-gray-300 p-3 text-sm transition-colors outline-none focus:border-[#065f46]" required />
+              <input key={`phone-${user?.phone ?? ""}`} type="tel" defaultValue={user?.phone ?? ""} className="w-full rounded-sm border border-gray-300 p-3 text-sm transition-colors outline-none focus:border-[#065f46]" required />
+            </div>
+            <div>
+              <label className="mb-2 block text-xs font-bold tracking-wider text-gray-500 uppercase">Enterprise Name</label>
+              <input key={`enterprise-${enterpriseName}`} type="text" defaultValue={enterpriseName} className="w-full rounded-sm border border-gray-300 p-3 text-sm transition-colors outline-none focus:border-[#065f46]" required />
+            </div>
+            <div className="md:col-span-2">
+              <label className="mb-2 block text-xs font-bold tracking-wider text-gray-500 uppercase">Registered Address</label>
+              <input key={`address-${user?.address ?? ""}`} type="text" defaultValue={user?.address ?? ""} className="w-full rounded-sm border border-gray-300 p-3 text-sm transition-colors outline-none focus:border-[#065f46]" />
             </div>
           </div>
 
@@ -65,11 +78,15 @@ export function ProfileView() {
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <label className="mb-1 block text-[10px] font-bold tracking-wider text-gray-400 uppercase">Current Node</label>
-                <div className="rounded-sm border border-gray-200 bg-gray-100 p-2.5 text-sm font-semibold text-[#111827]">No enterprise profile linked</div>
+                <div className="rounded-sm border border-gray-200 bg-gray-100 p-2.5 text-sm font-semibold text-[#111827]">{enterpriseName}</div>
               </div>
               <div>
                 <label className="mb-1 block text-[10px] font-bold tracking-wider text-gray-400 uppercase">LGU Affiliation</label>
-                <div className="rounded-sm border border-gray-200 bg-gray-100 p-2.5 text-sm font-semibold text-[#111827]">San Pedro City</div>
+                <div className="rounded-sm border border-gray-200 bg-gray-100 p-2.5 text-sm font-semibold text-[#111827]">{[user?.category ?? "Registered Enterprise", user?.barangay ? `Barangay ${user.barangay}` : "San Pedro City"].join(" - ")}</div>
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] font-bold tracking-wider text-gray-400 uppercase">Enterprise ID</label>
+                <div className="rounded-sm border border-gray-200 bg-gray-100 p-2.5 text-sm font-semibold text-[#111827]">{user?.enterpriseId ?? "Not assigned"}</div>
               </div>
             </div>
             <p className="text-[10px] font-medium text-gray-500">To modify your establishment's structural identity, please contact the LGU Administrator.</p>
@@ -89,4 +106,16 @@ export function ProfileView() {
       </Card>
     </div>
   );
+}
+
+function getInitials(value: string) {
+  const initials = value
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+
+  return initials || "EA";
 }

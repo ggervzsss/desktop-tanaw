@@ -4,7 +4,7 @@ import { ArrowLeft, Eye, EyeOff, KeyRound, LockKeyhole, ShieldCheck } from "luci
 import { routePaths } from "../../../app/router/routePaths";
 import { cn } from "../../../utils/cn";
 import { notifyError, notifySuccess } from "../../toasts/services/toast-service";
-import { changePassword } from "../api/login";
+import { changePassword, logout as logoutRequest } from "../api/login";
 import { useAuthStore } from "../stores/auth-store";
 
 const cityHallImage =
@@ -84,6 +84,14 @@ export function ChangePasswordPage() {
     }
   };
 
+  const handleReturnToLogin = async () => {
+    try {
+      await logoutRequest();
+    } finally {
+      logout();
+    }
+  };
+
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-y-auto bg-slate-950 px-4 py-4">
       <div className="absolute inset-0 bg-cover bg-center opacity-45" style={{ backgroundImage: `url('${cityHallImage}')` }} />
@@ -95,7 +103,7 @@ export function ChangePasswordPage() {
       >
         <button
           type="button"
-          onClick={logout}
+          onClick={handleReturnToLogin}
           className="hover:text-tanaw-green absolute top-4 left-4 rounded-md p-2 text-gray-500 transition hover:bg-gray-100"
           aria-label="Return to login"
         >

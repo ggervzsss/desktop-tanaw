@@ -7,6 +7,7 @@ type AuthState = {
   user: AuthUser | null;
   isAuthenticated: boolean;
   setSession: (session: LoginResponse) => void;
+  updateUser: (user: AuthUser) => void;
   logout: () => void;
   hasRole: (roles: AuthRole[]) => boolean;
 };
@@ -21,6 +22,11 @@ export const useAuthStore = create<AuthState>()(
         set({
           token: session.token,
           user: session.user,
+          isAuthenticated: true,
+        }),
+      updateUser: (user) =>
+        set({
+          user,
           isAuthenticated: true,
         }),
       logout: () =>
