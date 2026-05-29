@@ -1,5 +1,9 @@
 import { type FormEvent, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { ThemePreference } from "../../../types/enterprise";
+import { changePassword } from "../../login/api/login";
+import { useAuthStore } from "../../login/stores/auth-store";
+import { notifyError, notifySuccess } from "../../toasts/services/toast-service";
 import { ActiveSessionsPanel } from "./ActiveSessionsPanel";
 import { CredentialControl } from "./CredentialControl";
 import { DataArchivePanel } from "./DataArchivePanel";
@@ -12,20 +16,40 @@ type SecurityViewProps = {
 };
 
 export function SecurityView({ theme, setTheme }: SecurityViewProps) {
+  const queryClient = useQueryClient();
+  const setSession = useAuthStore((state) => state.setSession);
   const [isPasswordLoading, setIsPasswordLoading] = useState(false);
   const [isPasswordSuccess, setIsPasswordSuccess] = useState(false);
-  const [is2FAEnabled, setIs2FAEnabled] = useState(true);
   const [isArchiveLoading, setIsArchiveLoading] = useState(false);
   const [isArchiveSuccess, setIsArchiveSuccess] = useState(false);
 
-  const handlePasswordUpdate = (event: FormEvent<HTMLFormElement>) => {
+  const handlePasswordUpdate = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const currentPassword = String(formData.get("currentPassword") ?? "");
+    const newPassword = String(formData.get("newPassword") ?? "");
+    const confirmPassword = String(formData.get("confirmPassword") ?? "");
+
+    if (newPassword !== confirmPassword) {
+      notifyError("New passwords do not match.");
+      return;
+    }
+
     setIsPasswordLoading(true);
-    window.setTimeout(() => {
-      setIsPasswordLoading(false);
+    try {
+      const session = await changePassword(currentPassword, newPassword);
+      queryClient.removeQueries({ queryKey: ["enterprise-current-user"] });
+      setSession(session);
       setIsPasswordSuccess(true);
+      notifySuccess("Password updated.");
       window.setTimeout(() => setIsPasswordSuccess(false), 3000);
-    }, 1500);
+      form.reset();
+    } catch {
+      notifyError("Unable to update password. Check your current password and try again.");
+    } finally {
+      setIsPasswordLoading(false);
+    }
   };
 
   const handleDataArchive = () => {
@@ -51,7 +75,7 @@ export function SecurityView({ theme, setTheme }: SecurityViewProps) {
         </div>
 
         <div className="space-y-6 lg:col-span-1">
-          <EnhancedProtectionPanel is2FAEnabled={is2FAEnabled} onToggle2FA={() => setIs2FAEnabled(!is2FAEnabled)} />
+          <EnhancedProtectionPanel />
           <ThemePreferencePanel theme={theme} setTheme={setTheme} />
           <DataArchivePanel isLoading={isArchiveLoading} isSuccess={isArchiveSuccess} onRequestArchive={handleDataArchive} />
         </div>

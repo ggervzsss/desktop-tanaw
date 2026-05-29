@@ -17,16 +17,36 @@ export function CredentialControl({ isLoading, isSuccess, onSubmit }: Credential
       <form onSubmit={onSubmit} className="space-y-4">
         <div>
           <label className="mb-2 block text-xs font-bold tracking-wider text-gray-500 uppercase">Current Password</label>
-          <input type="password" placeholder="••••••••" className="w-full rounded-sm border border-gray-300 p-3 font-mono text-sm outline-none focus:border-[#065f46]" required />
+          <input
+            name="currentPassword"
+            type="password"
+            placeholder="********"
+            className="w-full rounded-sm border border-gray-300 p-3 font-mono text-sm outline-none focus:border-[#065f46]"
+            required
+          />
         </div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
             <label className="mb-2 block text-xs font-bold tracking-wider text-gray-500 uppercase">New Password</label>
-            <input type="password" placeholder="••••••••" className="w-full rounded-sm border border-gray-300 p-3 font-mono text-sm outline-none focus:border-[#065f46]" required />
+            <input
+              name="newPassword"
+              type="password"
+              minLength={8}
+              placeholder="********"
+              className="w-full rounded-sm border border-gray-300 p-3 font-mono text-sm outline-none focus:border-[#065f46]"
+              required
+            />
           </div>
           <div>
             <label className="mb-2 block text-xs font-bold tracking-wider text-gray-500 uppercase">Confirm New Password</label>
-            <input type="password" placeholder="••••••••" className="w-full rounded-sm border border-gray-300 p-3 font-mono text-sm outline-none focus:border-[#065f46]" required />
+            <input
+              name="confirmPassword"
+              type="password"
+              minLength={8}
+              placeholder="********"
+              className="w-full rounded-sm border border-gray-300 p-3 font-mono text-sm outline-none focus:border-[#065f46]"
+              required
+            />
           </div>
         </div>
         <div className="flex justify-end pt-2">

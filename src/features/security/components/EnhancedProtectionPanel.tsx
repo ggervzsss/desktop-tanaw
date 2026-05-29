@@ -1,12 +1,7 @@
 import { Shield } from "lucide-react";
 import { Card } from "../../../components/Card";
 
-type EnhancedProtectionPanelProps = {
-  is2FAEnabled: boolean;
-  onToggle2FA: () => void;
-};
-
-export function EnhancedProtectionPanel({ is2FAEnabled, onToggle2FA }: EnhancedProtectionPanelProps) {
+export function EnhancedProtectionPanel() {
   return (
     <Card className="p-6">
       <h3 className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-2 text-sm font-bold tracking-wider text-[#111827] uppercase">
@@ -15,11 +10,9 @@ export function EnhancedProtectionPanel({ is2FAEnabled, onToggle2FA }: EnhancedP
       <div className="mt-2 flex items-center justify-between">
         <div>
           <p className="text-sm font-bold text-[#111827]">Two-Factor Auth (2FA)</p>
-          <p className="mt-1 text-[10px] text-gray-500">Require an extra security code when logging in.</p>
+          <p className="mt-1 text-[10px] text-gray-500">Not configured for this local deployment.</p>
         </div>
-        <button onClick={onToggle2FA} className={`relative flex h-6 w-12 items-center rounded-full transition-colors ${is2FAEnabled ? "bg-[#065f46]" : "bg-gray-300"}`}>
-          <div className={`absolute h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${is2FAEnabled ? "translate-x-7" : "translate-x-1"}`}></div>
-        </button>
+        <span className="rounded-full bg-gray-100 px-3 py-1 text-[10px] font-bold tracking-wider text-gray-500 uppercase">Unavailable</span>
       </div>
     </Card>
   );
