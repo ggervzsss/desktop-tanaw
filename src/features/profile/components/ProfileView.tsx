@@ -1,7 +1,19 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { Check, RefreshCw, Save, Shield, Upload } from "lucide-react";
 import { Card } from "../../../components/Card";
+import { ContactNumberInput } from "../../../components/ContactNumberInput";
 import { useAuthStore } from "../../login/stores/auth-store";
+import { normalizeEmail, normalizeName, toPhilippineLocalDigits, validateEmail, validateName, validatePhilippineContactNumber, validateRequiredText } from "../../../utils/form-validation";
+
+type ProfileFormState = {
+  managerName: string;
+  email: string;
+  phoneLocal: string;
+  enterpriseName: string;
+  address: string;
+};
+
+type ProfileFormErrors = Partial<Record<keyof ProfileFormState, string>>;
 
 export function ProfileView() {
   const user = useAuthStore((state) => state.user);
@@ -10,11 +22,41 @@ export function ProfileView() {
   const enterpriseName = user?.enterpriseName ?? user?.displayName ?? user?.name ?? "Enterprise Account";
   const managerName = user?.managerName ?? user?.name ?? user?.displayName ?? "Not provided";
   const initials = getInitials(enterpriseName);
+  const [form, setForm] = useState<ProfileFormState>(() => ({
+    managerName,
+    email: user?.email ?? "",
+    phoneLocal: toPhilippineLocalDigits(user?.phone ?? ""),
+    enterpriseName,
+    address: user?.address ?? "",
+  }));
+  const [errors, setErrors] = useState<ProfileFormErrors>({});
+
+  useEffect(() => {
+    setForm({
+      managerName,
+      email: user?.email ?? "",
+      phoneLocal: toPhilippineLocalDigits(user?.phone ?? ""),
+      enterpriseName,
+      address: user?.address ?? "",
+    });
+    setErrors({});
+  }, [enterpriseName, managerName, user?.address, user?.email, user?.phone]);
 
   const handleSave = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const nextErrors = validateProfileForm(form);
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
+
     setIsLoading(true);
     setTimeout(() => {
+      setForm((current) => ({
+        ...current,
+        managerName: normalizeName(current.managerName),
+        email: normalizeEmail(current.email),
+        enterpriseName: current.enterpriseName.trim(),
+        address: current.address.trim(),
+      }));
       setIsLoading(false);
       setIsSuccess(true);
       setTimeout(() => setIsSuccess(false), 3000);
@@ -47,27 +89,53 @@ export function ProfileView() {
           </div>
         </div>
 
-        <form onSubmit={handleSave} className="space-y-6">
+        <form onSubmit={handleSave} noValidate className="space-y-6">
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <div>
               <label className="mb-2 block text-xs font-bold tracking-wider text-gray-500 uppercase">Full Name / Lead Admin</label>
-              <input key={`manager-${managerName}`} type="text" defaultValue={managerName} className="w-full rounded-sm border border-gray-300 p-3 text-sm transition-colors outline-none focus:border-[#065f46]" required />
+              <input
+                type="text"
+                value={form.managerName}
+                onChange={(event) => updateField("managerName", event.target.value)}
+                className={`w-full rounded-sm border p-3 text-sm transition-colors outline-none focus:border-[#065f46] ${errors.managerName ? "border-tanaw-red" : "border-gray-300"}`}
+                required
+              />
+              {errors.managerName && <p className="text-tanaw-red mt-1.5 text-xs font-semibold">{errors.managerName}</p>}
             </div>
             <div>
               <label className="mb-2 block text-xs font-bold tracking-wider text-gray-500 uppercase">Business Email</label>
-              <input key={`email-${user?.email ?? ""}`} type="email" defaultValue={user?.email ?? ""} className="w-full rounded-sm border border-gray-300 p-3 text-sm transition-colors outline-none focus:border-[#065f46]" required />
+              <input
+                type="email"
+                value={form.email}
+                onChange={(event) => updateField("email", event.target.value)}
+                className={`w-full rounded-sm border p-3 text-sm transition-colors outline-none focus:border-[#065f46] ${errors.email ? "border-tanaw-red" : "border-gray-300"}`}
+                required
+              />
+              {errors.email && <p className="text-tanaw-red mt-1.5 text-xs font-semibold">{errors.email}</p>}
             </div>
             <div>
-              <label className="mb-2 block text-xs font-bold tracking-wider text-gray-500 uppercase">Contact Number</label>
-              <input key={`phone-${user?.phone ?? ""}`} type="tel" defaultValue={user?.phone ?? ""} className="w-full rounded-sm border border-gray-300 p-3 text-sm transition-colors outline-none focus:border-[#065f46]" required />
+              <ContactNumberInput label="Contact Number" value={form.phoneLocal} onChange={(value) => updateField("phoneLocal", value)} error={errors.phoneLocal} required />
             </div>
             <div>
               <label className="mb-2 block text-xs font-bold tracking-wider text-gray-500 uppercase">Enterprise Name</label>
-              <input key={`enterprise-${enterpriseName}`} type="text" defaultValue={enterpriseName} className="w-full rounded-sm border border-gray-300 p-3 text-sm transition-colors outline-none focus:border-[#065f46]" required />
+              <input
+                type="text"
+                value={form.enterpriseName}
+                onChange={(event) => updateField("enterpriseName", event.target.value)}
+                className={`w-full rounded-sm border p-3 text-sm transition-colors outline-none focus:border-[#065f46] ${errors.enterpriseName ? "border-tanaw-red" : "border-gray-300"}`}
+                required
+              />
+              {errors.enterpriseName && <p className="text-tanaw-red mt-1.5 text-xs font-semibold">{errors.enterpriseName}</p>}
             </div>
             <div className="md:col-span-2">
               <label className="mb-2 block text-xs font-bold tracking-wider text-gray-500 uppercase">Registered Address</label>
-              <input key={`address-${user?.address ?? ""}`} type="text" defaultValue={user?.address ?? ""} className="w-full rounded-sm border border-gray-300 p-3 text-sm transition-colors outline-none focus:border-[#065f46]" />
+              <input
+                type="text"
+                value={form.address}
+                onChange={(event) => updateField("address", event.target.value)}
+                className={`w-full rounded-sm border p-3 text-sm transition-colors outline-none focus:border-[#065f46] ${errors.address ? "border-tanaw-red" : "border-gray-300"}`}
+              />
+              {errors.address && <p className="text-tanaw-red mt-1.5 text-xs font-semibold">{errors.address}</p>}
             </div>
           </div>
 
@@ -106,6 +174,26 @@ export function ProfileView() {
       </Card>
     </div>
   );
+
+  function updateField<FieldName extends keyof ProfileFormState>(field: FieldName, value: ProfileFormState[FieldName]) {
+    setForm((current) => ({ ...current, [field]: value }));
+    setErrors((current) => ({ ...current, [field]: undefined }));
+  }
+}
+
+function validateProfileForm(form: ProfileFormState) {
+  const errors: ProfileFormErrors = {};
+  const managerNameError = validateName(form.managerName, "Full name");
+  const emailError = validateEmail(form.email);
+  const phoneError = validatePhilippineContactNumber(form.phoneLocal ? `+63${form.phoneLocal}` : "", true);
+  const enterpriseNameError = validateRequiredText(form.enterpriseName, "Enterprise name", 2);
+
+  if (managerNameError) errors.managerName = managerNameError;
+  if (emailError) errors.email = emailError;
+  if (phoneError) errors.phoneLocal = phoneError;
+  if (enterpriseNameError) errors.enterpriseName = enterpriseNameError;
+
+  return errors;
 }
 
 function getInitials(value: string) {

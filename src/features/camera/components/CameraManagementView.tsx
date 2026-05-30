@@ -7,6 +7,7 @@ import { CameraList } from "./CameraList";
 import { CameraPreviewPanel } from "./CameraPreviewPanel";
 import type { CameraFormValues } from "../types/camera";
 import { getValidationWarnings } from "../utils/camera-validation";
+import { validateRequiredText, validateRtspUrl } from "../../../utils/form-validation";
 
 type CameraManagementViewProps = {
   cameras: Camera[];
@@ -14,12 +15,14 @@ type CameraManagementViewProps = {
 };
 
 const emptyCameraForm: CameraFormValues = { name: "", rtsp: "", zone: "" };
+type CameraFormErrors = Partial<Record<keyof CameraFormValues, string>>;
 
 export function CameraManagementView({ cameras, setCameras }: CameraManagementViewProps) {
   const [activeCamId, setActiveCamId] = useState<number | null>(cameras[0]?.id ?? null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newCam, setNewCam] = useState<CameraFormValues>(emptyCameraForm);
+  const [cameraFormErrors, setCameraFormErrors] = useState<CameraFormErrors>({});
   const [isValidating, setIsValidating] = useState(false);
   const [editForm, setEditForm] = useState<Camera | null>(null);
   const [cameraPendingDelete, setCameraPendingDelete] = useState<Camera | null>(null);
@@ -56,18 +59,22 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
 
   const handleAddCamera = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const errors = validateCameraForm(newCam);
+    setCameraFormErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
     setIsValidating(true);
 
     window.setTimeout(() => {
       const newCameraNode: Camera = {
         id: Date.now(),
-        name: newCam.name,
+        name: newCam.name.trim(),
         status: "online",
-        zone: newCam.zone,
+        zone: newCam.zone.trim(),
         fps: 30,
         resolution: "1080p",
         type: "Entry/Exit",
-        rtsp: newCam.rtsp,
+        rtsp: newCam.rtsp.trim(),
         config: {
           tripwire: 50,
           roi: { top: 10, left: 10, width: 80, height: 80 },
@@ -78,14 +85,25 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
       setCameras([...cameras, newCameraNode]);
       setActiveCamId(newCameraNode.id);
       setNewCam(emptyCameraForm);
+      setCameraFormErrors({});
       setIsValidating(false);
       setShowAddModal(false);
     }, 1500);
   };
 
+  const handleNewCameraChange = (values: CameraFormValues) => {
+    setNewCam(values);
+    setCameraFormErrors({});
+  };
+
+  const closeAddModal = () => {
+    setShowAddModal(false);
+    setCameraFormErrors({});
+  };
+
   return (
     <div className="animate-in fade-in space-y-6 font-['Inter'] duration-500">
-      {showAddModal && <CameraAddModal newCam={newCam} isValidating={isValidating} onClose={() => setShowAddModal(false)} onSubmit={handleAddCamera} onChange={setNewCam} />}
+      {showAddModal && <CameraAddModal newCam={newCam} isValidating={isValidating} errors={cameraFormErrors} onClose={closeAddModal} onSubmit={handleAddCamera} onChange={handleNewCameraChange} />}
       {cameraPendingDelete && (
         <ConfirmationDialog
           cancelLabel="Keep Camera"
@@ -107,7 +125,10 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
           <p className="mt-1 text-sm text-gray-500">Configure RTSP streams and visual counting zones for your establishment.</p>
         </div>
         <button
-          onClick={() => setShowAddModal(true)}
+          onClick={() => {
+            setCameraFormErrors({});
+            setShowAddModal(true);
+          }}
           className="flex items-center gap-2 rounded-sm bg-[#065f46] px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#044a36]"
         >
           <Plus size={16} /> Add Camera Node
@@ -142,4 +163,17 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
       </div>
     </div>
   );
+}
+
+function validateCameraForm(values: CameraFormValues) {
+  const errors: CameraFormErrors = {};
+  const nameError = validateRequiredText(values.name, "Camera name", 2);
+  const zoneError = validateRequiredText(values.zone, "Assigned zone", 2);
+  const rtspError = validateRtspUrl(values.rtsp);
+
+  if (nameError) errors.name = nameError;
+  if (zoneError) errors.zone = zoneError;
+  if (rtspError) errors.rtsp = rtspError;
+
+  return errors;
 }

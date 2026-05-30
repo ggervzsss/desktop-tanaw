@@ -13,6 +13,7 @@ type NotificationDropdownProps = {
   onMarkAllRead: () => void;
   onSelectNotification: (notification: EnterpriseNotification) => void;
   onSetOccupancyThreshold: (threshold: number) => void;
+  triggerVariant?: "default" | "topbar";
 };
 
 const notificationIconByType = (type: EnterpriseNotification["type"]) => {
@@ -32,15 +33,18 @@ export function NotificationDropdown({
   onMarkAllRead,
   onSelectNotification,
   onSetOccupancyThreshold,
+  triggerVariant = "default",
 }: NotificationDropdownProps) {
+  const triggerClassName =
+    triggerVariant === "topbar"
+      ? "relative flex h-11 w-11 items-center justify-center rounded-full border border-emerald-100/28 bg-white/[0.08] text-white shadow-sm backdrop-blur-md transition-all duration-200 hover:-translate-y-0.5 hover:bg-white/[0.15] hover:shadow-[0_10px_24px_rgba(3,38,16,0.34)] active:translate-y-0"
+      : `relative rounded-full p-2.5 transition-colors ${isOpen ? "bg-gray-100 text-[#065f46]" : "border border-gray-100 bg-white text-gray-500 shadow-sm hover:bg-gray-50"}`;
+
   return (
     <div className="relative">
-      <button
-        onClick={onToggleOpen}
-        className={`relative rounded-full p-2.5 transition-colors ${isOpen ? "bg-gray-100 text-[#065f46]" : "border border-gray-100 bg-white text-gray-500 shadow-sm hover:bg-gray-50"}`}
-      >
-        <Bell size={20} />
-        {unreadCount > 0 && <span className="bg-tanaw-red absolute top-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white"></span>}
+      <button onClick={onToggleOpen} className={triggerClassName} aria-label="Notifications">
+        <Bell size={18} />
+        {unreadCount > 0 && <span className={`bg-tanaw-red absolute h-2.5 w-2.5 rounded-full border-2 ${triggerVariant === "topbar" ? "top-1 right-1 border-tanaw-green" : "top-0 right-0 border-white"}`}></span>}
       </button>
 
       {isOpen && (
