@@ -33,14 +33,14 @@ export function ConfirmationDialog({ cancelLabel = "Cancel", children, confirmLa
 
   return (
     <ModalPortal>
-      <div className="fixed inset-0 z-1000 flex items-center justify-center bg-[#111827]/60 p-4 backdrop-blur-sm">
-        <div className={`animate-in fade-in w-full max-w-md rounded-sm border-t-4 ${styles.accent} bg-white p-6 shadow-2xl`}>
+      <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-[#111827]/70 p-4 backdrop-blur-md" onPointerDown={onCancel}>
+        <div className={`animate-in fade-in w-full max-w-md rounded-2xl border-t-4 ${styles.accent} bg-white p-6 shadow-2xl`} onPointerDown={(event) => event.stopPropagation()}>
           <div className="mb-4 flex items-start justify-between gap-4">
             <h3 className="flex items-center gap-2 text-lg font-bold text-[#111827]">
               <span className={styles.icon}>{icon ?? <AlertTriangle size={20} />}</span>
               {title}
             </h3>
-            <button onClick={onCancel} className="rounded-sm p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-[#111827]" aria-label="Close dialog">
+            <button onClick={onCancel} className="rounded-full p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-[#111827]" aria-label="Close dialog">
               <X size={18} />
             </button>
           </div>
@@ -48,10 +48,10 @@ export function ConfirmationDialog({ cancelLabel = "Cancel", children, confirmLa
           <div className="mb-6 text-sm leading-relaxed text-gray-600">{children}</div>
 
           <div className="flex justify-end gap-3 border-t border-gray-100 pt-4">
-            <button onClick={onCancel} className="rounded-sm border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-[#111827] transition-colors hover:bg-gray-50">
+            <button onClick={onCancel} className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-[#111827] transition-colors hover:bg-gray-50">
               {cancelLabel}
             </button>
-            <button onClick={onConfirm} className={`rounded-sm px-4 py-2 text-sm font-bold text-white shadow-sm transition-colors ${styles.button}`}>
+            <button onClick={onConfirm} className={`rounded-xl px-4 py-2 text-sm font-bold text-white shadow-sm transition-colors ${styles.button}`}>
               {confirmLabel}
             </button>
           </div>

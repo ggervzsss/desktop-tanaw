@@ -25,15 +25,15 @@ export function DotFormModal({ onClose, period, metrics, demo, notes }: DotFormM
 
   return (
     <ModalPortal>
-      <div className="fixed inset-0 z-1000 flex items-center justify-center bg-[#111827]/80 p-4 font-['Inter'] backdrop-blur-sm sm:p-8 print:block print:bg-white print:p-0">
-        <div className="animate-in fade-in flex h-full max-h-[90vh] w-full max-w-6xl flex-col rounded-sm bg-white shadow-2xl print:m-0 print:h-auto print:max-h-none print:max-w-none print:shadow-none">
+      <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-[#111827]/80 p-4 font-['Inter'] backdrop-blur-md sm:p-8 print:block print:bg-white print:p-0" onPointerDown={onClose}>
+        <div className="animate-in fade-in flex h-full max-h-[90vh] w-full max-w-6xl flex-col rounded-2xl bg-white shadow-2xl print:m-0 print:h-auto print:max-h-none print:max-w-none print:shadow-none" onPointerDown={(event) => event.stopPropagation()}>
           <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 p-4 print:hidden">
             <div className="flex items-center gap-3">
               <FileText size={20} className="text-[#111827]" />
               <h3 className="font-bold text-[#111827]">DOT Form Preview</h3>
               <span className="rounded-sm bg-[#065f46]/10 px-2 py-1 text-xs font-semibold text-[#065f46]">Ready for Export</span>
             </div>
-            <button onClick={onClose} className="rounded-sm p-2 text-gray-500 transition-colors hover:bg-gray-200 hover:text-[#111827]">
+            <button onClick={onClose} className="rounded-full p-2 text-gray-500 transition-colors hover:bg-gray-200 hover:text-[#111827]" aria-label="Close preview">
               <X size={20} />
             </button>
           </div>
