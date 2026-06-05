@@ -22,7 +22,11 @@ class CameraProcessingManager:
     def __init__(self) -> None:
         self._lock = threading.RLock()
         self._stop_event = threading.Event()
-        self._thread: threading.Thread | None = None
+        self._processing_thread: threading.Thread | None = None
+        self._reader_thread: threading.Thread | None = None
+        self._raw_frame_condition = threading.Condition(self._lock)
+        self._latest_raw_frame = None
+        self._latest_raw_frame_id = 0
         self._latest_jpeg: bytes | None = None
         self._state = RuntimeState()
         self._config: CameraStartRequest | None = None
@@ -54,20 +58,28 @@ class CameraProcessingManager:
             self._latest_jpeg = self._build_status_frame("Starting camera processing...")
             self._state = RuntimeState(running=True, status="running", error=None)
             self._stop_event.clear()
-            self._thread = threading.Thread(target=self._processing_loop, name="tanaw-camera-processing", daemon=True)
-            self._thread.start()
+            self._latest_raw_frame = None
+            self._latest_raw_frame_id = 0
+            self._reader_thread = threading.Thread(target=self._capture_loop, name="tanaw-camera-reader", daemon=True)
+            self._processing_thread = threading.Thread(target=self._processing_loop, name="tanaw-camera-processing", daemon=True)
+            self._reader_thread.start()
+            self._processing_thread.start()
 
     def stop(self) -> None:
-        thread: threading.Thread | None
+        threads: list[threading.Thread]
         with self._lock:
-            thread = self._thread
+            threads = [thread for thread in (self._reader_thread, self._processing_thread) if thread is not None]
             self._stop_event.set()
+            self._raw_frame_condition.notify_all()
 
-        if thread and thread.is_alive():
-            thread.join(timeout=5)
+        for thread in threads:
+            if thread.is_alive():
+                thread.join(timeout=5)
 
         with self._lock:
-            self._thread = None
+            self._reader_thread = None
+            self._processing_thread = None
+            self._latest_raw_frame = None
             self._state.running = False
             if self._state.status != "error":
                 self._state.status = "stopped"
@@ -89,7 +101,7 @@ class CameraProcessingManager:
 
             return self._build_status_frame("No camera stream available.")
 
-    def _processing_loop(self) -> None:
+    def _capture_loop(self) -> None:
         config = self._config
         if config is None:
             self._set_error("Camera configuration is missing.")
@@ -107,31 +119,77 @@ class CameraProcessingManager:
                 ok, frame = capture.read()
                 if not ok or frame is None:
                     failed_reads += 1
-                    if failed_reads >= 30:
+                    if failed_reads >= 90:
                         self._set_error("Camera stream stopped returning frames.")
                         return
-                    time.sleep(0.1)
+                    time.sleep(0.05)
                     continue
 
                 failed_reads = 0
-                frame = self._resize_for_processing(frame)
+                frame = self._resize_for_processing(frame, config.max_frame_width)
+
+                with self._raw_frame_condition:
+                    self._latest_raw_frame = frame
+                    self._latest_raw_frame_id += 1
+                    self._state.status = "running"
+                    self._state.error = None
+                    self._raw_frame_condition.notify_all()
+        except Exception as exc:
+            self._set_error(str(exc))
+        finally:
+            capture.release()
+            with self._lock:
+                if self._state.status != "error":
+                    self._state.status = "stopped"
+
+    def _processing_loop(self) -> None:
+        config = self._config
+        if config is None:
+            self._set_error("Camera configuration is missing.")
+            return
+
+        last_processed_frame_id = 0
+        frame_interval = 1.0 / max(config.processing_fps, 1.0)
+
+        try:
+            while not self._stop_event.is_set():
+                frame, frame_id = self._wait_for_latest_frame(last_processed_frame_id)
+                if frame is None:
+                    continue
+
+                started_at = time.monotonic()
                 processed = self._process_frame(frame, config.confidence)
                 encoded = self._encode_frame(processed)
+                last_processed_frame_id = frame_id
 
                 with self._lock:
                     self._latest_jpeg = encoded
                     self._state.status = "running"
                     self._state.error = None
 
-                time.sleep(0.01)
+                elapsed = time.monotonic() - started_at
+                remaining = frame_interval - elapsed
+                if remaining > 0:
+                    time.sleep(remaining)
         except Exception as exc:
             self._set_error(str(exc))
         finally:
-            capture.release()
             with self._lock:
                 self._state.running = False
                 if self._state.status != "error":
                     self._state.status = "stopped"
+
+    def _wait_for_latest_frame(self, last_processed_frame_id: int):
+        with self._raw_frame_condition:
+            self._raw_frame_condition.wait_for(
+                lambda: self._stop_event.is_set() or self._latest_raw_frame_id > last_processed_frame_id,
+                timeout=1.0,
+            )
+
+            if self._stop_event.is_set() or self._latest_raw_frame is None:
+                return None, last_processed_frame_id
+
+            return self._latest_raw_frame.copy(), self._latest_raw_frame_id
 
     def _process_frame(self, frame, confidence: float):
         height, width = frame.shape[:2]
@@ -164,9 +222,8 @@ class CameraProcessingManager:
 
         return frame
 
-    def _resize_for_processing(self, frame):
+    def _resize_for_processing(self, frame, max_width: int):
         height, width = frame.shape[:2]
-        max_width = 960
         if width <= max_width:
             return frame
 
@@ -180,10 +237,11 @@ class CameraProcessingManager:
         return buffer.tobytes()
 
     def _set_error(self, message: str) -> None:
-        with self._lock:
+        with self._raw_frame_condition:
             self._state = RuntimeState(running=False, status="error", error=message)
             self._latest_jpeg = self._build_status_frame(message)
             self._stop_event.set()
+            self._raw_frame_condition.notify_all()
 
     def _build_status_frame(self, message: str) -> bytes:
         frame = np.zeros((540, 960, 3), dtype=np.uint8)

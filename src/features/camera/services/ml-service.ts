@@ -88,7 +88,9 @@ export async function startCameraProcessing(baseUrl: string, camera: Camera): Pr
         camera_name: camera.name,
         camera_type: camera.cameraType,
         confidence: camera.confidence,
+        max_frame_width: 640,
         password: camera.password || null,
+        processing_fps: 5,
         reverse_direction: camera.config.reverse,
         stream_url: camera.rtsp,
         tripwire_position: camera.config.tripwire / 100,
@@ -115,10 +117,7 @@ async function requestJson<T>(url: string, init: RequestInit, timeoutMs: number)
     const response = await fetch(url, {
       ...init,
       cache: "no-store",
-      headers: {
-        "Content-Type": "application/json",
-        ...(init.headers ?? {}),
-      },
+      headers: buildHeaders(init),
       signal: controller.signal,
     });
 
@@ -136,6 +135,17 @@ async function requestJson<T>(url: string, init: RequestInit, timeoutMs: number)
   } finally {
     window.clearTimeout(timeoutId);
   }
+}
+
+function buildHeaders(init: RequestInit) {
+  const headers = new Headers(init.headers);
+  const hasJsonBody = typeof init.body === "string";
+
+  if (hasJsonBody && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  return headers;
 }
 
 async function getErrorMessage(response: Response) {
