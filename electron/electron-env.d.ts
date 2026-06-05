@@ -38,4 +38,25 @@ interface Window {
       running: boolean;
     }>;
   };
+  tanawAppLifecycle?: {
+    getBackgroundStatus: () => Promise<{
+      background: boolean;
+      mlServiceError: string | null;
+      mlServiceRunning: boolean;
+      trayAvailable: boolean;
+    }>;
+    getStartupSettings: () => Promise<{
+      openAtLogin: boolean;
+    }>;
+    quit: () => Promise<void>;
+    showWindow: () => Promise<{
+      background: boolean;
+      mlServiceError: string | null;
+      mlServiceRunning: boolean;
+      trayAvailable: boolean;
+    }>;
+    updateStartupSettings: (openAtLogin: boolean) => Promise<{
+      openAtLogin: boolean;
+    }>;
+  };
 }

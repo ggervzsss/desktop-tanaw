@@ -15,6 +15,7 @@ import {
   getMlCounts,
   getMlDetections,
   getMlHealth,
+  getMlSession,
   getPreviewStreamUrl,
   getMlServiceStatus,
   restartMlService,
@@ -105,6 +106,27 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
     }
   }, [mlBaseUrl, setCameras]);
 
+  const refreshMlSession = useCallback(async () => {
+    try {
+      const session = await getMlSession(mlBaseUrl);
+      setCounts(session.counts);
+
+      if (session.running && session.camera_id !== null) {
+        setProcessingCameraId(session.camera_id);
+        if (cameras.some((camera) => camera.id === session.camera_id)) {
+          setCameras((current) => current.map((camera) => (camera.id === session.camera_id && camera.status !== "running" ? { ...camera, status: "running" } : camera)));
+          setActiveCamId((current) => current ?? session.camera_id);
+        }
+        return;
+      }
+
+      setProcessingCameraId(null);
+      setDetections(EMPTY_ML_DETECTIONS);
+    } catch {
+      // The regular health/count polling handles service-offline UI state.
+    }
+  }, [cameras, mlBaseUrl, setCameras]);
+
   const refreshDetections = useCallback(async () => {
     if (!processingCameraId || !counts.running) {
       setDetections(EMPTY_ML_DETECTIONS);
@@ -158,6 +180,12 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
     const intervalId = window.setInterval(() => void refreshMlStatus(), 4000);
     return () => window.clearInterval(intervalId);
   }, [refreshMlStatus]);
+
+  useEffect(() => {
+    void refreshMlSession();
+    const intervalId = window.setInterval(() => void refreshMlSession(), 4000);
+    return () => window.clearInterval(intervalId);
+  }, [refreshMlSession]);
 
   useEffect(() => {
     void refreshCounts();
@@ -220,6 +248,7 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
         reverse: false,
         roi: { top: 10, left: 10, width: 80, height: 80 },
         tripwire: 50,
+        tripwires: getDefaultTripwires(50),
       },
       fps: 0,
       id: Date.now(),
@@ -433,6 +462,7 @@ function validateCameraForm(values: CameraFormValues) {
 function normalizeCamera(camera: Camera): Camera {
   const streamUrl = camera.rtsp ?? "";
   const cameraType = camera.cameraType ?? (streamUrl.startsWith("http") ? "IP_WEBCAM" : "RTSP_CCTV");
+  const tripwire = camera.config?.tripwire ?? 50;
 
   return {
     ...camera,
@@ -441,6 +471,26 @@ function normalizeCamera(camera: Camera): Camera {
     fps: camera.fps ?? 0,
     resolution: camera.resolution ?? "Adaptive",
     status: camera.status ?? "untested",
+    config: {
+      ...camera.config,
+      tripwire,
+      tripwires: camera.config?.tripwires ?? getDefaultTripwires(tripwire),
+      roi: camera.config?.roi ?? { top: 10, left: 10, width: 80, height: 80 },
+      reverse: camera.config?.reverse ?? false,
+    },
+  };
+}
+
+function getDefaultTripwires(centerX: number) {
+  return {
+    entry: {
+      start: { x: Math.max(5, centerX - 8), y: 12 },
+      end: { x: Math.max(5, centerX - 8), y: 88 },
+    },
+    exit: {
+      start: { x: Math.min(95, centerX + 8), y: 12 },
+      end: { x: Math.min(95, centerX + 8), y: 88 },
+    },
   };
 }
 

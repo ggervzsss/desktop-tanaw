@@ -6,14 +6,27 @@ from pydantic import BaseModel, Field, field_validator
 CameraType = Literal["IP_WEBCAM", "RTSP_CCTV", "USB_WEBCAM", "ONVIF_CCTV"]
 
 
+class TripwirePoint(BaseModel):
+    x: float = Field(..., ge=0.0, le=1.0)
+    y: float = Field(..., ge=0.0, le=1.0)
+
+
+class TripwireLine(BaseModel):
+    start: TripwirePoint
+    end: TripwirePoint
+
+
 class CameraStartRequest(BaseModel):
     stream_url: str = Field(..., min_length=3)
     confidence: float = Field(default=0.35, ge=0.05, le=0.95)
+    camera_id: int | None = None
     camera_name: str | None = Field(default=None, max_length=120)
     camera_type: CameraType = "IP_WEBCAM"
     username: str | None = Field(default=None, max_length=120)
     password: str | None = Field(default=None, max_length=240)
     tripwire_position: float = Field(default=0.5, ge=0.1, le=0.9)
+    entry_line: TripwireLine | None = None
+    exit_line: TripwireLine | None = None
     reverse_direction: bool = False
     processing_fps: float = Field(default=5.0, ge=1.0, le=15.0)
     stream_fps: float = Field(default=24.0, ge=1.0, le=30.0)
@@ -81,3 +94,14 @@ class DetectionResponse(BaseModel):
     frame_width: int | None = None
     frame_height: int | None = None
     tracks: list[DetectionTrackResponse]
+
+
+class SessionResponse(BaseModel):
+    running: bool
+    status: str
+    error: str | None = None
+    camera_id: int | None = None
+    camera_name: str | None = None
+    camera_config: dict | None = None
+    counts: CountResponse
+    updated_at: str | None = None

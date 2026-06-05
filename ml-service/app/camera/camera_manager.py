@@ -1,6 +1,7 @@
 import threading
 import time
 from dataclasses import dataclass
+from datetime import datetime
 import os
 
 os.environ.setdefault("OPENCV_FFMPEG_LOGLEVEL", "16")
@@ -21,6 +22,7 @@ from app.camera.stream_reader import (
 from app.config.camera_config import CameraStartRequest
 from app.counting.tripwire_counter import TripwireCounter
 from app.detection.yolo_detector import YoloPersonTracker
+from app.storage.session_store import SessionStore
 
 
 @dataclass
@@ -57,6 +59,9 @@ class CameraProcessingManager:
         self._config: CameraStartRequest | None = None
         self._counter = TripwireCounter()
         self._tracker = YoloPersonTracker()
+        self._session_store = SessionStore()
+        self._session_updated_at: str | None = None
+        self._restoring_session = False
 
     @property
     def running(self) -> bool:
@@ -82,6 +87,8 @@ class CameraProcessingManager:
             self._config = config
             self._counter = TripwireCounter(
                 tripwire_position=config.tripwire_position,
+                entry_line=self._normalized_line(config.entry_line),
+                exit_line=self._normalized_line(config.exit_line),
                 reverse_direction=config.reverse_direction,
             )
             self._counter.reset()
@@ -99,6 +106,7 @@ class CameraProcessingManager:
             self._reader_thread.start()
             self._processing_thread.start()
             self._stream_thread.start()
+            self._persist_session_locked()
 
     def stop(self) -> None:
         threads: list[threading.Thread]
@@ -120,6 +128,7 @@ class CameraProcessingManager:
             self._state.running = False
             if self._state.status != "error":
                 self._state.status = "stopped"
+            self._persist_session_locked()
 
     def counts(self) -> dict[str, int | str | bool | None]:
         with self._lock:
@@ -155,6 +164,57 @@ class CameraProcessingManager:
                     for track in self._latest_tracks
                 ],
             }
+
+    def session(self) -> dict:
+        with self._lock:
+            counts = self.counts()
+            return {
+                "running": self._state.running,
+                "status": self._state.status,
+                "error": self._state.error,
+                "camera_id": self._config.camera_id if self._config else None,
+                "camera_name": self._config.camera_name if self._config else None,
+                "camera_config": self._config.model_dump(mode="json") if self._config else None,
+                "counts": counts,
+                "updated_at": self._session_updated_at,
+            }
+
+    def restore_last_session(self) -> bool:
+        if self.running or self._restoring_session:
+            return False
+
+        payload = self._session_store.load_session()
+        if not payload or not payload.get("running"):
+            self._restore_saved_snapshot(payload)
+            return False
+
+        camera_config = payload.get("camera_config")
+        if not isinstance(camera_config, dict):
+            self._restore_saved_snapshot(payload)
+            return False
+
+        try:
+            config = CameraStartRequest(**camera_config)
+        except Exception:
+            self._restore_saved_snapshot(payload)
+            return False
+
+        self._restore_saved_snapshot(payload)
+        self._restoring_session = True
+        try:
+            try:
+                self.start(config)
+                self._restore_saved_snapshot(payload)
+                return True
+            except Exception as exc:
+                with self._raw_frame_condition:
+                    self._state = RuntimeState(running=False, status="error", error=f"Unable to restore monitoring session: {exc}")
+                    self._config = config
+                    self._persist_session_locked()
+                    self._raw_frame_condition.notify_all()
+                return False
+        finally:
+            self._restoring_session = False
 
     def latest_frame(self) -> bytes:
         with self._lock:
@@ -351,6 +411,8 @@ class CameraProcessingManager:
                     raw_frame_id,
                     tracks,
                     tripwire_position,
+                    entry_line,
+                    exit_line,
                     reverse_direction,
                     entry_count,
                     exit_count,
@@ -358,7 +420,7 @@ class CameraProcessingManager:
                 ) = frame_snapshot
 
                 started_at = time.monotonic()
-                display_frame = self._render_display_frame(frame, tracks, tripwire_position, reverse_direction, entry_count, exit_count, occupancy_count)
+                display_frame = self._render_display_frame(frame, tracks, tripwire_position, entry_line, exit_line, reverse_direction, entry_count, exit_count, occupancy_count)
                 encoded = self._encode_frame(display_frame)
 
                 with self._raw_frame_condition:
@@ -390,6 +452,8 @@ class CameraProcessingManager:
                 self._latest_raw_frame_id,
                 list(self._latest_tracks),
                 self._counter.tripwire_position,
+                self._counter.entry_line,
+                self._counter.exit_line,
                 self._counter.reverse_direction,
                 counts.entry,
                 counts.exit,
@@ -409,12 +473,14 @@ class CameraProcessingManager:
             return self._latest_raw_frame.copy(), self._latest_raw_frame_id
 
     def _detect_and_count(self, frame, confidence: float) -> list[DisplayTrack]:
-        frame_width = frame.shape[1]
+        frame_height, frame_width = frame.shape[:2]
         tracks = self._tracker.track_people(frame, confidence)
         display_tracks: list[DisplayTrack] = []
 
         for track in tracks:
-            direction = self._counter.update(track.track_id, track.centroid, frame_width) if track.track_id > 0 else None
+            direction = self._counter.update(track.track_id, track.centroid, frame_width, frame_height) if track.track_id > 0 else None
+            if direction is not None:
+                self._persist_count_event(track.track_id, direction)
             display_tracks.append(
                 DisplayTrack(
                     track_id=track.track_id,
@@ -432,21 +498,27 @@ class CameraProcessingManager:
         frame,
         tracks: list[DisplayTrack],
         tripwire_position: float,
+        entry_line,
+        exit_line,
         reverse_direction: bool,
         entry_count: int,
         exit_count: int,
         occupancy_count: int,
     ):
         height, width = frame.shape[:2]
-        line_x = int(width * tripwire_position)
-
-        cv2.line(frame, (line_x, 0), (line_x, height), (59, 130, 246), 2)
-        if reverse_direction:
-            cv2.putText(frame, "ENTRY", (max(8, line_x - 92), 28), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (74, 222, 128), 2, cv2.LINE_AA)
-            cv2.putText(frame, "EXIT", (line_x + 12, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (248, 113, 113), 2, cv2.LINE_AA)
+        if entry_line is not None or exit_line is not None:
+            self._draw_tripwire_line(frame, entry_line, width, height, "ENTRY", (74, 222, 128))
+            self._draw_tripwire_line(frame, exit_line, width, height, "EXIT", (248, 113, 113))
         else:
-            cv2.putText(frame, "EXIT", (max(8, line_x - 74), 28), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (248, 113, 113), 2, cv2.LINE_AA)
-            cv2.putText(frame, "ENTRY", (line_x + 12, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (74, 222, 128), 2, cv2.LINE_AA)
+            line_x = int(width * tripwire_position)
+
+            cv2.line(frame, (line_x, 0), (line_x, height), (59, 130, 246), 2)
+            if reverse_direction:
+                cv2.putText(frame, "ENTRY", (max(8, line_x - 92), 28), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (74, 222, 128), 2, cv2.LINE_AA)
+                cv2.putText(frame, "EXIT", (line_x + 12, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (248, 113, 113), 2, cv2.LINE_AA)
+            else:
+                cv2.putText(frame, "EXIT", (max(8, line_x - 74), 28), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (248, 113, 113), 2, cv2.LINE_AA)
+                cv2.putText(frame, "ENTRY", (line_x + 12, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (74, 222, 128), 2, cv2.LINE_AA)
 
         for track in tracks:
             x1, y1, x2, y2 = track.bbox
@@ -463,6 +535,24 @@ class CameraProcessingManager:
         cv2.putText(frame, status, (24, height - 22), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2, cv2.LINE_AA)
 
         return frame
+
+    def _draw_tripwire_line(self, frame, line, frame_width: int, frame_height: int, label: str, color: tuple[int, int, int]) -> None:
+        if line is None:
+            return
+
+        (x1, y1), (x2, y2) = line
+        start = (int(x1 * frame_width), int(y1 * frame_height))
+        end = (int(x2 * frame_width), int(y2 * frame_height))
+        cv2.line(frame, start, end, color, 3)
+        cv2.circle(frame, start, 5, color, -1)
+        cv2.circle(frame, end, 5, color, -1)
+        cv2.putText(frame, label, (start[0] + 8, max(20, start[1] - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.62, color, 2, cv2.LINE_AA)
+
+    def _normalized_line(self, line):
+        if line is None:
+            return None
+
+        return ((line.start.x, line.start.y), (line.end.x, line.end.y))
 
     def _resize_for_processing(self, frame, max_width: int):
         height, width = frame.shape[:2]
@@ -484,6 +574,7 @@ class CameraProcessingManager:
             self._latest_jpeg = self._build_status_frame(message)
             self._latest_stream_jpeg = self._latest_jpeg
             self._latest_stream_frame_id += 1
+            self._persist_session_locked()
             self._stop_event.set()
             self._raw_frame_condition.notify_all()
 
@@ -494,3 +585,71 @@ class CameraProcessingManager:
         cv2.putText(frame, "TANAW ML Camera Service", (270, 236), cv2.FONT_HERSHEY_SIMPLEX, 0.85, (255, 255, 255), 2, cv2.LINE_AA)
         cv2.putText(frame, message[:72], (90, 288), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (203, 213, 225), 2, cv2.LINE_AA)
         return self._encode_frame(frame)
+
+    def _persist_count_event(self, track_id: int, direction: str) -> None:
+        with self._lock:
+            counts = self._counter.counts.as_dict()
+            try:
+                self._session_store.append_event(
+                    {
+                        "camera_id": self._config.camera_id if self._config else None,
+                        "camera_name": self._config.camera_name if self._config else None,
+                        "direction": direction,
+                        "track_id": track_id,
+                        "counts": counts,
+                    }
+                )
+            except OSError:
+                pass
+            self._persist_session_locked()
+
+    def _persist_session_locked(self) -> None:
+        counts = self._counter.counts.as_dict()
+        payload = {
+            "running": self._state.running,
+            "status": self._state.status,
+            "error": self._state.error,
+            "camera_id": self._config.camera_id if self._config else None,
+            "camera_name": self._config.camera_name if self._config else None,
+            "camera_config": self._config.model_dump(mode="json") if self._config else None,
+            "counts": {
+                **counts,
+                "running": self._state.running,
+                "status": self._state.status,
+                "error": self._state.error,
+            },
+        }
+        try:
+            self._session_store.save_session(payload)
+            saved_payload = self._session_store.load_session()
+            self._session_updated_at = saved_payload.get("updated_at") if saved_payload else None
+        except OSError:
+            return
+
+    def _restore_saved_snapshot(self, payload: dict | None) -> None:
+        if not payload:
+            return
+
+        counts_payload = payload.get("counts")
+        if not isinstance(counts_payload, dict):
+            return
+
+        with self._lock:
+            self._session_updated_at = payload.get("updated_at") if isinstance(payload.get("updated_at"), str) else None
+            self._counter.counts.entry = _safe_int(counts_payload.get("entry"))
+            self._counter.counts.exit = _safe_int(counts_payload.get("exit"))
+            self._counter.counts.occupancy = _safe_int(counts_payload.get("occupancy"))
+            started_at = counts_payload.get("started_at")
+            if isinstance(started_at, str):
+                try:
+                    self._counter.counts.started_at = datetime.fromisoformat(started_at)
+                except ValueError:
+                    self._counter.counts.started_at = None
+            if isinstance(payload.get("status"), str):
+                self._state.status = payload["status"]
+            if isinstance(payload.get("error"), str) or payload.get("error") is None:
+                self._state.error = payload.get("error")
+
+
+def _safe_int(value) -> int:
+    return value if isinstance(value, int) else 0

@@ -117,7 +117,15 @@ export function CameraPreviewPanel({
           onStopProcessing={onStopProcessing}
           onTestConnection={onTestConnection}
         />
-        <CameraVideoPreview activeCam={activeCam} detections={detections} editForm={editForm} isProcessing={isProcessing} isEditMode={isEditMode} streamUrl={streamUrl} />
+        <CameraVideoPreview
+          activeCam={activeCam}
+          detections={detections}
+          editForm={editForm}
+          isProcessing={isProcessing}
+          isEditMode={isEditMode}
+          onEditFormChange={onEditFormChange}
+          streamUrl={streamUrl}
+        />
         <CameraValidationWarnings warnings={warnings} />
         {isEditMode && editForm ? <CameraEditControls editForm={editForm} onEditFormChange={onEditFormChange} /> : <CameraReadOnlyDetails activeCam={activeCam} />}
       </div>

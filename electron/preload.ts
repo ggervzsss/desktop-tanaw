@@ -31,3 +31,21 @@ contextBridge.exposeInMainWorld("tanawMlService", {
     return ipcRenderer.invoke("ml-service:restart");
   },
 });
+
+contextBridge.exposeInMainWorld("tanawAppLifecycle", {
+  getBackgroundStatus() {
+    return ipcRenderer.invoke("app-lifecycle:get-background-status");
+  },
+  getStartupSettings() {
+    return ipcRenderer.invoke("app-lifecycle:get-startup-settings");
+  },
+  quit() {
+    return ipcRenderer.invoke("app-lifecycle:quit");
+  },
+  showWindow() {
+    return ipcRenderer.invoke("app-lifecycle:show-window");
+  },
+  updateStartupSettings(openAtLogin: boolean) {
+    return ipcRenderer.invoke("app-lifecycle:update-startup-settings", openAtLogin);
+  },
+});

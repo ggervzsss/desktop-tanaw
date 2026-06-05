@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, Tray } from "electron";
 import { existsSync } from "node:fs";
 import { spawn, type ChildProcess } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -20,11 +20,18 @@ export const RENDERER_DIST = path.join(process.env.APP_ROOT, "dist");
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, "public") : RENDERER_DIST;
 
 let win: BrowserWindow | null;
+let tray: Tray | null = null;
 let mlServiceProcess: ChildProcess | null = null;
 let mlServiceError: string | null = null;
+let isQuitting = false;
 
 const mlServicePort = Number(process.env["TANAW_ML_SERVICE_PORT"] ?? "8765");
 const mlServiceUrl = `http://127.0.0.1:${mlServicePort}`;
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+}
 
 function getMlServiceDir() {
   const developmentPath = path.join(process.env.APP_ROOT, "ml-service");
@@ -64,12 +71,14 @@ function startMlService() {
     env: {
       ...process.env,
       PYTHONUNBUFFERED: "1",
+      TANAW_APP_DATA_DIR: app.getPath("userData"),
       TANAW_ML_SERVICE_PORT: String(mlServicePort),
     },
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
   });
   mlServiceProcess = child;
+  updateTrayMenu();
 
   child.stdout?.on("data", (chunk) => {
     console.info(`[tanaw-ml] ${String(chunk).trim()}`);
@@ -82,6 +91,7 @@ function startMlService() {
   child.on("error", (error) => {
     mlServiceError = error.message;
     mlServiceProcess = null;
+    updateTrayMenu();
   });
 
   child.on("exit", (code, signal) => {
@@ -89,6 +99,7 @@ function startMlService() {
       mlServiceError = `ML service exited with code ${code}${signal ? ` (${signal})` : ""}.`;
     }
     mlServiceProcess = null;
+    updateTrayMenu();
   });
 }
 
@@ -98,6 +109,27 @@ function stopMlService() {
   const serviceProcess = mlServiceProcess;
   mlServiceProcess = null;
   serviceProcess.kill();
+  updateTrayMenu();
+}
+
+async function stopCameraProcessingFromTray() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 2500);
+
+  try {
+    await fetch(`${mlServiceUrl}/camera/stop`, { method: "POST", signal: controller.signal });
+    mlServiceError = null;
+  } catch (error) {
+    mlServiceError = error instanceof Error ? error.message : "Unable to stop camera processing.";
+  } finally {
+    clearTimeout(timeout);
+    updateTrayMenu();
+  }
+}
+
+function restartMlService() {
+  stopMlService();
+  startMlService();
 }
 
 function registerMlServiceIpc() {
@@ -109,8 +141,7 @@ function registerMlServiceIpc() {
   }));
 
   ipcMain.handle("ml-service:restart", () => {
-    stopMlService();
-    startMlService();
+    restartMlService();
     return {
       baseUrl: mlServiceUrl,
       error: mlServiceError,
@@ -120,7 +151,89 @@ function registerMlServiceIpc() {
   });
 }
 
+function registerAppLifecycleIpc() {
+  ipcMain.handle("app-lifecycle:get-background-status", () => getBackgroundStatus());
+  ipcMain.handle("app-lifecycle:show-window", () => {
+    showMainWindow();
+    return getBackgroundStatus();
+  });
+  ipcMain.handle("app-lifecycle:quit", () => quitApplication());
+  ipcMain.handle("app-lifecycle:get-startup-settings", () => getStartupSettings());
+  ipcMain.handle("app-lifecycle:update-startup-settings", (_event, openAtLogin: boolean) => {
+    setStartupSettings(Boolean(openAtLogin));
+    return getStartupSettings();
+  });
+}
+
+function getBackgroundStatus() {
+  return {
+    background: Boolean(win && !win.isVisible()),
+    mlServiceRunning: Boolean(mlServiceProcess),
+    mlServiceError,
+    trayAvailable: Boolean(tray),
+  };
+}
+
+function getStartupSettings() {
+  const settings = app.getLoginItemSettings();
+  return { openAtLogin: settings.openAtLogin };
+}
+
+function setStartupSettings(openAtLogin: boolean) {
+  app.setLoginItemSettings({
+    openAtLogin,
+    openAsHidden: true,
+    args: openAtLogin ? ["--background"] : [],
+  });
+}
+
+function createTray() {
+  if (tray) return;
+
+  const iconPath = path.join(process.env.VITE_PUBLIC, "electron-vite.svg");
+  const icon = nativeImage.createFromPath(iconPath);
+  tray = new Tray(icon.isEmpty() ? iconPath : icon);
+  tray.setToolTip("TANAW Enterprise Desktop");
+  tray.on("double-click", showMainWindow);
+  updateTrayMenu();
+}
+
+function updateTrayMenu() {
+  if (!tray) return;
+
+  const monitoringLabel = mlServiceProcess ? "ML Service: Running" : mlServiceError ? "ML Service: Error" : "ML Service: Stopped";
+  const contextMenu = Menu.buildFromTemplate([
+    { label: "Open TANAW", click: showMainWindow },
+    { label: monitoringLabel, enabled: false },
+    { type: "separator" },
+    { label: "Stop Monitoring", enabled: Boolean(mlServiceProcess), click: () => void stopCameraProcessingFromTray() },
+    { label: "Restart ML Service", click: restartMlService },
+    { type: "separator" },
+    { label: "Quit TANAW", click: () => void quitApplication() },
+  ]);
+
+  tray.setContextMenu(contextMenu);
+}
+
+function showMainWindow() {
+  if (!win || win.isDestroyed()) {
+    createWindow();
+    return;
+  }
+
+  win.show();
+  if (win.isMinimized()) {
+    win.restore();
+  }
+  win.focus();
+}
+
 function createWindow() {
+  if (win && !win.isDestroyed()) {
+    showMainWindow();
+    return;
+  }
+
   win = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -134,6 +247,18 @@ function createWindow() {
   });
   win.maximize();
 
+  win.on("close", (event) => {
+    if (isQuitting) return;
+
+    event.preventDefault();
+    win?.hide();
+    updateTrayMenu();
+  });
+
+  win.on("closed", () => {
+    win = null;
+  });
+
   win.webContents.on("did-finish-load", () => {
     win?.webContents.send("main-process-message", new Date().toLocaleString());
   });
@@ -145,26 +270,41 @@ function createWindow() {
   }
 }
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    stopMlService();
-    app.quit();
-    win = null;
+async function quitApplication() {
+  isQuitting = true;
+  if (mlServiceProcess) {
+    await stopCameraProcessingFromTray();
   }
+  stopMlService();
+  if (win && !win.isDestroyed()) {
+    win.destroy();
+  }
+  app.quit();
+}
+
+app.on("window-all-closed", () => {
+  updateTrayMenu();
 });
 
 app.on("before-quit", () => {
+  isQuitting = true;
   stopMlService();
 });
 
 app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
+  showMainWindow();
+});
+
+app.on("second-instance", () => {
+  showMainWindow();
 });
 
 app.whenReady().then(() => {
   registerMlServiceIpc();
+  registerAppLifecycleIpc();
+  createTray();
   startMlService();
-  createWindow();
+  if (!process.argv.includes("--background")) {
+    createWindow();
+  }
 });

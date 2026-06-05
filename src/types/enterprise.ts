@@ -36,6 +36,8 @@ export type ReportRecord = {
 
 export type CameraType = "IP_WEBCAM" | "RTSP_CCTV" | "USB_WEBCAM" | "ONVIF_CCTV";
 export type CameraStatus = "untested" | "online" | "offline" | "running" | "stopped" | "error";
+export type TripwirePoint = { x: number; y: number };
+export type TripwireLine = { start: TripwirePoint; end: TripwirePoint };
 
 export type Camera = {
   id: number;
@@ -52,6 +54,10 @@ export type Camera = {
   password?: string;
   config: {
     tripwire: number;
+    tripwires: {
+      entry: TripwireLine;
+      exit: TripwireLine;
+    };
     roi: {
       top: number;
       left: number;

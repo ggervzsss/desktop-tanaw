@@ -1,10 +1,12 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ThemePreference } from "../../../types/enterprise";
+import { getStartupSettings, updateStartupSettings } from "../../../lib/appLifecycle";
 import { changePassword } from "../../login/api/login";
 import { useAuthStore } from "../../login/stores/auth-store";
 import { notifyError, notifySuccess } from "../../toasts/services/toast-service";
 import { ActiveSessionsPanel } from "./ActiveSessionsPanel";
+import { BackgroundMonitoringPanel } from "./BackgroundMonitoringPanel";
 import { CredentialControl } from "./CredentialControl";
 import { DataArchivePanel } from "./DataArchivePanel";
 import { EnhancedProtectionPanel } from "./EnhancedProtectionPanel";
@@ -22,6 +24,21 @@ export function SecurityView({ theme, setTheme }: SecurityViewProps) {
   const [isPasswordSuccess, setIsPasswordSuccess] = useState(false);
   const [isArchiveLoading, setIsArchiveLoading] = useState(false);
   const [isArchiveSuccess, setIsArchiveSuccess] = useState(false);
+  const [isStartupLoading, setIsStartupLoading] = useState(false);
+  const [openAtLogin, setOpenAtLogin] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    void getStartupSettings().then((settings) => {
+      if (isMounted) {
+        setOpenAtLogin(settings.openAtLogin);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handlePasswordUpdate = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -61,6 +78,19 @@ export function SecurityView({ theme, setTheme }: SecurityViewProps) {
     }, 2000);
   };
 
+  const handleStartupToggle = async (enabled: boolean) => {
+    setIsStartupLoading(true);
+    try {
+      const settings = await updateStartupSettings(enabled);
+      setOpenAtLogin(settings.openAtLogin);
+      notifySuccess(settings.openAtLogin ? "TANAW will start at sign-in." : "TANAW startup at sign-in disabled.");
+    } catch {
+      notifyError("Unable to update background startup setting.");
+    } finally {
+      setIsStartupLoading(false);
+    }
+  };
+
   return (
     <div className="animate-in fade-in max-w-6xl space-y-6 font-['Inter'] duration-500">
       <div>
@@ -76,6 +106,7 @@ export function SecurityView({ theme, setTheme }: SecurityViewProps) {
 
         <div className="space-y-6 lg:col-span-1">
           <EnhancedProtectionPanel />
+          <BackgroundMonitoringPanel isElectron={Boolean(window.tanawAppLifecycle)} isLoading={isStartupLoading} openAtLogin={openAtLogin} onToggleStartup={handleStartupToggle} />
           <ThemePreferencePanel theme={theme} setTheme={setTheme} />
           <DataArchivePanel isLoading={isArchiveLoading} isSuccess={isArchiveSuccess} onRequestArchive={handleDataArchive} />
         </div>

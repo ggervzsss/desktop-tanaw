@@ -1,11 +1,12 @@
 import asyncio
+import threading
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from app.camera.camera_manager import CameraProcessingManager
-from app.config.camera_config import CameraStartRequest, CameraTestRequest, CameraTestResponse, CountResponse, DetectionResponse, HealthResponse
+from app.config.camera_config import CameraStartRequest, CameraTestRequest, CameraTestResponse, CountResponse, DetectionResponse, HealthResponse, SessionResponse
 
 
 manager = CameraProcessingManager()
@@ -18,6 +19,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+def restore_active_session() -> None:
+    threading.Thread(target=manager.restore_last_session, name="tanaw-restore-session", daemon=True).start()
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -53,6 +59,17 @@ def stop_camera() -> dict[str, str]:
 @app.get("/counts", response_model=CountResponse)
 def counts() -> CountResponse:
     return CountResponse(**manager.counts())
+
+
+@app.get("/session", response_model=SessionResponse)
+def session() -> SessionResponse:
+    return SessionResponse(**manager.session())
+
+
+@app.post("/session/restore", response_model=SessionResponse)
+def restore_session() -> SessionResponse:
+    manager.restore_last_session()
+    return SessionResponse(**manager.session())
 
 
 @app.get("/detections", response_model=DetectionResponse)

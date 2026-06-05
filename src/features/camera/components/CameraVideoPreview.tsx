@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { Camera } from "../../../types/enterprise";
 import type { MlDetections } from "../services/ml-service";
 import { CameraOverlayConfig } from "./CameraOverlayConfig";
@@ -9,6 +9,7 @@ type CameraVideoPreviewProps = {
   editForm: Camera | null;
   isProcessing: boolean;
   isEditMode: boolean;
+  onEditFormChange: Dispatch<SetStateAction<Camera | null>>;
   streamUrl: string;
 };
 
@@ -19,7 +20,7 @@ type ContentRect = {
   width: number;
 };
 
-export function CameraVideoPreview({ activeCam, detections, editForm, isProcessing, isEditMode, streamUrl }: CameraVideoPreviewProps) {
+export function CameraVideoPreview({ activeCam, detections, editForm, isProcessing, isEditMode, onEditFormChange, streamUrl }: CameraVideoPreviewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [contentRect, setContentRect] = useState<ContentRect | null>(null);
   const streamIsAvailable = isProcessing && streamUrl;
@@ -68,7 +69,22 @@ export function CameraVideoPreview({ activeCam, detections, editForm, isProcessi
       )}
       {!streamIsAvailable && <div className="absolute inset-0 bg-black/30"></div>}
 
-      <CameraOverlayConfig config={overlayConfig} isEditMode={isEditMode} />
+      <div
+        className="absolute"
+        style={contentRect ? { height: contentRect.height, left: contentRect.left, top: contentRect.top, width: contentRect.width } : { inset: 0 }}
+      >
+        <CameraOverlayConfig
+          config={overlayConfig}
+          isEditMode={isEditMode}
+          onConfigChange={
+            isEditMode
+              ? (config) => {
+                  onEditFormChange((current) => (current ? { ...current, config } : current));
+                }
+              : undefined
+          }
+        />
+      </div>
       {streamIsAvailable && contentRect && frameWidth > 0 && frameHeight > 0 && (
         <div className="pointer-events-none absolute" style={{ height: contentRect.height, left: contentRect.left, top: contentRect.top, width: contentRect.width }}>
           {detections.tracks.map((track) => {

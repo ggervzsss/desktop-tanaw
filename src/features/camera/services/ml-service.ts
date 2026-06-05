@@ -40,6 +40,17 @@ export type MlDetections = {
   tracks: MlDetectionTrack[];
 };
 
+export type MlSession = {
+  running: boolean;
+  status: string;
+  error: string | null;
+  camera_id: number | null;
+  camera_name: string | null;
+  camera_config: Record<string, unknown> | null;
+  counts: MlCounts;
+  updated_at: string | null;
+};
+
 export type CameraTestResult = {
   ok: boolean;
   message: string;
@@ -94,6 +105,14 @@ export async function getMlCounts(baseUrl: string): Promise<MlCounts> {
   return requestJson<MlCounts>(`${baseUrl}/counts`, { method: "GET" }, 2500);
 }
 
+export async function getMlSession(baseUrl: string): Promise<MlSession> {
+  return requestJson<MlSession>(`${baseUrl}/session`, { method: "GET" }, 2500);
+}
+
+export async function restoreMlSession(baseUrl: string): Promise<MlSession> {
+  return requestJson<MlSession>(`${baseUrl}/session/restore`, { method: "POST" }, 8000);
+}
+
 export async function getMlDetections(baseUrl: string): Promise<MlDetections> {
   return requestJson<MlDetections>(`${baseUrl}/detections`, { method: "GET" }, 2500);
 }
@@ -116,8 +135,11 @@ export async function startCameraProcessing(baseUrl: string, camera: Camera): Pr
       method: "POST",
       body: JSON.stringify({
         camera_name: camera.name,
+        camera_id: camera.id,
         camera_type: camera.cameraType,
         confidence: camera.confidence,
+        entry_line: toMlTripwireLine(camera.config.tripwires.entry),
+        exit_line: toMlTripwireLine(camera.config.tripwires.exit),
         max_frame_width: 640,
         password: camera.password || null,
         processing_fps: 5,
@@ -150,6 +172,13 @@ export function getPreviewStreamUrl(baseUrl: string, camera: Camera | undefined,
 
 function isNativeBrowserMjpegCamera(camera: Camera) {
   return camera.cameraType === "IP_WEBCAM" && /^https?:\/\//i.test(camera.rtsp.trim());
+}
+
+function toMlTripwireLine(line: Camera["config"]["tripwires"]["entry"]) {
+  return {
+    start: { x: line.start.x / 100, y: line.start.y / 100 },
+    end: { x: line.end.x / 100, y: line.end.y / 100 },
+  };
 }
 
 async function requestJson<T>(url: string, init: RequestInit, timeoutMs: number): Promise<T> {

@@ -25,8 +25,8 @@ export function CameraReadOnlyDetails({ activeCam }: CameraReadOnlyDetailsProps)
         <div className="w-full rounded-sm border border-gray-200 bg-gray-50 p-2 text-sm font-medium text-gray-800">{activeCam.confidence.toFixed(2)}</div>
       </div>
       <div>
-        <label className="mb-1 block text-xs font-bold text-gray-500 uppercase">Counting Logic</label>
-        <div className="w-full rounded-sm border border-gray-200 bg-gray-50 p-2 text-sm font-medium text-gray-800">{activeCam.config.reverse ? "Right-to-left Entry" : "Left-to-right Entry"}</div>
+        <label className="mb-1 block text-xs font-bold text-gray-500 uppercase">Tripwire Mode</label>
+        <div className="w-full rounded-sm border border-gray-200 bg-gray-50 p-2 text-sm font-medium text-gray-800">Visual Entry / Exit Lines</div>
       </div>
       <div className="flex items-center">
         <div className={`mt-4 flex items-center gap-2 text-sm font-bold ${["online", "running"].includes(activeCam.status) ? "text-[#065f46]" : "text-red-600"}`}>

@@ -1,5 +1,5 @@
 import React from "react";
-import { Maximize, Move, Video } from "lucide-react";
+import { Maximize, Video } from "lucide-react";
 import type { Camera } from "../../../types/enterprise";
 
 type CameraEditControlsProps = {
@@ -77,37 +77,7 @@ export function CameraEditControls({ editForm, onEditFormChange }: CameraEditCon
         </div>
       </div>
 
-      <div>
-        <h4 className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-2 text-xs font-bold tracking-wider text-[#111827] uppercase">
-          <Move size={14} className="text-[#065f46]" /> Tripwire Config
-        </h4>
-        <div className="space-y-4">
-          <div>
-            <label className="mb-2 flex justify-between text-xs font-semibold text-gray-600">
-              <span>X-Axis Position</span> <span className="font-mono text-[#065f46]">{editForm.config.tripwire}%</span>
-            </label>
-            <input
-              type="range"
-              min="10"
-              max="90"
-              value={editForm.config.tripwire}
-              onChange={(event) => onEditFormChange({ ...editForm, config: { ...editForm.config, tripwire: parseInt(event.target.value, 10) } })}
-              className="w-full accent-[#065f46]"
-            />
-          </div>
-          <div className="flex items-center justify-between rounded-sm border border-gray-200 bg-gray-50 p-2">
-            <span className="text-xs font-semibold text-gray-700">Direction Logic Swap</span>
-            <button
-              onClick={() => onEditFormChange({ ...editForm, config: { ...editForm.config, reverse: !editForm.config.reverse } })}
-              className={`rounded-sm px-3 py-1 text-xs font-bold transition-colors ${editForm.config.reverse ? "bg-[#111827] text-white" : "bg-gray-200 text-gray-700 hover:bg-gray-300"}`}
-            >
-              {editForm.config.reverse ? "Right-to-left Entry" : "Left-to-right Entry"}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div>
+      <div className="md:col-span-2">
         <h4 className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-2 text-xs font-bold tracking-wider text-[#111827] uppercase">
           <Maximize size={14} className="text-[#2d5eff]" /> Region of Interest
         </h4>
