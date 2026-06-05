@@ -11,7 +11,9 @@ import { getValidationWarnings } from "../utils/camera-validation";
 import {
   DEFAULT_ML_SERVICE_BASE_URL,
   EMPTY_ML_COUNTS,
+  EMPTY_ML_DETECTIONS,
   getMlCounts,
+  getMlDetections,
   getMlHealth,
   getPreviewStreamUrl,
   getMlServiceStatus,
@@ -20,7 +22,7 @@ import {
   stopCameraProcessing,
   testCameraConnection,
 } from "../services/ml-service";
-import type { MlCounts, MlHealth, MlServiceStatus } from "../services/ml-service";
+import type { MlCounts, MlDetections, MlHealth, MlServiceStatus } from "../services/ml-service";
 
 type CameraManagementViewProps = {
   cameras: Camera[];
@@ -54,6 +56,7 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
   const [serviceStatus, setServiceStatus] = useState<MlServiceStatus | null>(null);
   const [health, setHealth] = useState<MlHealth | null>(null);
   const [counts, setCounts] = useState<MlCounts>(EMPTY_ML_COUNTS);
+  const [detections, setDetections] = useState<MlDetections>(EMPTY_ML_DETECTIONS);
   const [processingCameraId, setProcessingCameraId] = useState<number | null>(null);
   const [monitoringError, setMonitoringError] = useState<string | null>(null);
   const [streamVersion, setStreamVersion] = useState(0);
@@ -94,12 +97,26 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
 
       if (!nextCounts.running) {
         setProcessingCameraId(null);
+        setDetections(EMPTY_ML_DETECTIONS);
         setCameras((current) => current.map((camera) => (camera.status === "running" ? { ...camera, status: nextCounts.status === "error" ? "error" : "stopped" } : camera)));
       }
     } catch {
       setCounts((current) => ({ ...current, running: false, status: "offline" }));
     }
   }, [mlBaseUrl, setCameras]);
+
+  const refreshDetections = useCallback(async () => {
+    if (!processingCameraId || !counts.running) {
+      setDetections(EMPTY_ML_DETECTIONS);
+      return;
+    }
+
+    try {
+      setDetections(await getMlDetections(mlBaseUrl));
+    } catch {
+      setDetections((current) => ({ ...current, running: false, status: "offline", tracks: [] }));
+    }
+  }, [counts.running, mlBaseUrl, processingCameraId]);
 
   useEffect(() => {
     const saved = window.localStorage.getItem(CAMERA_STORAGE_KEY);
@@ -147,6 +164,12 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
     const intervalId = window.setInterval(() => void refreshCounts(), 1000);
     return () => window.clearInterval(intervalId);
   }, [refreshCounts]);
+
+  useEffect(() => {
+    void refreshDetections();
+    const intervalId = window.setInterval(() => void refreshDetections(), 250);
+    return () => window.clearInterval(intervalId);
+  }, [refreshDetections]);
 
   const handleDelete = () => {
     if (!activeCam) return;
@@ -236,7 +259,7 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
     setMonitoringError(null);
 
     try {
-      const result = await testCameraConnection(mlBaseUrl, activeCam.rtsp);
+      const result = await testCameraConnection(mlBaseUrl, activeCam);
       updateCameraStatus(activeCam.id, result.ok ? "online" : "offline");
       setMonitoringError(result.ok ? null : result.message);
       await refreshMlStatus();
@@ -259,6 +282,7 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
       updateCameraStatus(activeCam.id, "running");
       setProcessingCameraId(activeCam.id);
       setCounts({ ...EMPTY_ML_COUNTS, running: true, status: "running" });
+      setDetections(EMPTY_ML_DETECTIONS);
       setStreamVersion((current) => current + 1);
       await refreshMlStatus();
       await refreshCounts();
@@ -282,6 +306,7 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
       updateCameraStatus(cameraId, "stopped");
       setProcessingCameraId(null);
       setCounts(EMPTY_ML_COUNTS);
+      setDetections(EMPTY_ML_DETECTIONS);
       setStreamVersion((current) => current + 1);
       await refreshMlStatus();
       await refreshCounts();
@@ -301,6 +326,7 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
       setServiceStatus(nextStatus);
       setProcessingCameraId(null);
       setCounts(EMPTY_ML_COUNTS);
+      setDetections(EMPTY_ML_DETECTIONS);
       setStreamVersion((current) => current + 1);
     } catch (error) {
       setMonitoringError(toErrorMessage(error));
@@ -359,6 +385,7 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
           <CameraPreviewPanel
             activeCam={activeCam}
             counts={counts}
+            detections={detections}
             editForm={editForm}
             error={monitoringError}
             health={health}

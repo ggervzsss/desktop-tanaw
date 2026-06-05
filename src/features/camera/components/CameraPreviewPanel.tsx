@@ -8,11 +8,12 @@ import { CameraReadOnlyDetails } from "./CameraReadOnlyDetails";
 import { CameraValidationWarnings } from "./CameraValidationWarnings";
 import { CameraVideoPreview } from "./CameraVideoPreview";
 import { NoCameraSelected } from "./NoCameraSelected";
-import type { MlCounts, MlHealth, MlServiceStatus } from "../services/ml-service";
+import type { MlCounts, MlDetections, MlHealth, MlServiceStatus } from "../services/ml-service";
 
 type CameraPreviewPanelProps = {
   activeCam?: Camera;
   counts: MlCounts;
+  detections: MlDetections;
   editForm: Camera | null;
   error: string | null;
   health: MlHealth | null;
@@ -39,6 +40,7 @@ type CameraPreviewPanelProps = {
 export function CameraPreviewPanel({
   activeCam,
   counts,
+  detections,
   editForm,
   error,
   health,
@@ -115,7 +117,7 @@ export function CameraPreviewPanel({
           onStopProcessing={onStopProcessing}
           onTestConnection={onTestConnection}
         />
-        <CameraVideoPreview activeCam={activeCam} editForm={editForm} isProcessing={isProcessing} isEditMode={isEditMode} streamUrl={streamUrl} />
+        <CameraVideoPreview activeCam={activeCam} detections={detections} editForm={editForm} isProcessing={isProcessing} isEditMode={isEditMode} streamUrl={streamUrl} />
         <CameraValidationWarnings warnings={warnings} />
         {isEditMode && editForm ? <CameraEditControls editForm={editForm} onEditFormChange={onEditFormChange} /> : <CameraReadOnlyDetails activeCam={activeCam} />}
       </div>

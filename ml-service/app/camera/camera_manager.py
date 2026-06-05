@@ -9,7 +9,15 @@ os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
 import cv2
 import numpy as np
 
-from app.camera.stream_reader import is_mjpeg_http_stream, iter_mjpeg_frames, open_capture, validate_stream
+from app.camera.stream_reader import (
+    build_ip_webcam_snapshot_url,
+    is_mjpeg_http_stream,
+    iter_mjpeg_frames,
+    open_capture,
+    read_http_jpeg_frame,
+    validate_http_jpeg_snapshot,
+    validate_stream,
+)
 from app.config.camera_config import CameraStartRequest
 from app.counting.tripwire_counter import TripwireCounter
 from app.detection.yolo_detector import YoloPersonTracker
@@ -55,11 +63,16 @@ class CameraProcessingManager:
         with self._lock:
             return self._state.running
 
-    def test_connection(self, stream_url: str) -> tuple[bool, str]:
-        return validate_stream(stream_url)
+    def test_connection(self, stream_url: str, camera_type: str = "IP_WEBCAM") -> tuple[bool, str]:
+        try:
+            config = CameraStartRequest(stream_url=stream_url, camera_type=camera_type)
+        except Exception as exc:
+            return False, str(exc)
+
+        return self._validate_config_stream(config)
 
     def start(self, config: CameraStartRequest) -> None:
-        ok, message = validate_stream(config.stream_url)
+        ok, message = self._validate_config_stream(config)
         if not ok:
             raise ValueError(message)
 
@@ -118,6 +131,31 @@ class CameraProcessingManager:
                 "error": self._state.error,
             }
 
+    def detections(self) -> dict[str, int | str | bool | None | list[dict[str, int | float | str | tuple[int, int] | tuple[int, int, int, int] | None]]]:
+        with self._lock:
+            frame_height = None
+            frame_width = None
+            if self._latest_raw_frame is not None:
+                frame_height, frame_width = self._latest_raw_frame.shape[:2]
+
+            return {
+                "running": self._state.running,
+                "status": self._state.status,
+                "error": self._state.error,
+                "frame_width": frame_width,
+                "frame_height": frame_height,
+                "tracks": [
+                    {
+                        "track_id": track.track_id,
+                        "bbox": track.bbox,
+                        "confidence": track.confidence,
+                        "centroid": track.centroid,
+                        "direction": track.direction,
+                    }
+                    for track in self._latest_tracks
+                ],
+            }
+
     def latest_frame(self) -> bytes:
         with self._lock:
             if self._latest_stream_jpeg is not None:
@@ -148,10 +186,58 @@ class CameraProcessingManager:
             self._set_error("Camera configuration is missing.")
             return
 
+        snapshot_url = build_ip_webcam_snapshot_url(config.stream_url) if config.camera_type == "IP_WEBCAM" else None
+        if snapshot_url is not None:
+            self._ip_webcam_snapshot_capture_loop(config, snapshot_url)
+            return
+
         if is_mjpeg_http_stream(config.stream_url):
             self._mjpeg_capture_loop(config)
         else:
             self._opencv_capture_loop(config)
+
+    def _validate_config_stream(self, config: CameraStartRequest) -> tuple[bool, str]:
+        snapshot_url = build_ip_webcam_snapshot_url(config.stream_url) if config.camera_type == "IP_WEBCAM" else None
+        if snapshot_url is not None:
+            return validate_http_jpeg_snapshot(snapshot_url)
+
+        return validate_stream(config.stream_url)
+
+    def _ip_webcam_snapshot_capture_loop(self, config: CameraStartRequest, snapshot_url: str) -> None:
+        failed_reads = 0
+        last_error = "Camera snapshot endpoint stopped returning frames."
+        frame_interval = 1.0 / max(config.processing_fps, 1.0)
+
+        try:
+            while not self._stop_event.is_set():
+                started_at = time.monotonic()
+
+                try:
+                    frame = read_http_jpeg_frame(snapshot_url)
+                except Exception as exc:
+                    frame = None
+                    last_error = str(exc)
+
+                if frame is None:
+                    failed_reads += 1
+                    if failed_reads >= 30:
+                        self._set_error(f"Camera snapshot endpoint stopped returning frames: {last_error}")
+                        return
+                else:
+                    failed_reads = 0
+                    frame = self._resize_for_processing(frame, config.max_frame_width)
+                    self._publish_raw_frame(frame)
+
+                elapsed = time.monotonic() - started_at
+                remaining = frame_interval - elapsed
+                if remaining > 0:
+                    time.sleep(remaining)
+        except Exception as exc:
+            self._set_error(str(exc))
+        finally:
+            with self._lock:
+                if not self._stop_event.is_set() and self._state.status != "error":
+                    self._state.status = "stopped"
 
     def _mjpeg_capture_loop(self, config: CameraStartRequest) -> None:
         try:
@@ -328,7 +414,7 @@ class CameraProcessingManager:
         display_tracks: list[DisplayTrack] = []
 
         for track in tracks:
-            direction = self._counter.update(track.track_id, track.centroid, frame_width)
+            direction = self._counter.update(track.track_id, track.centroid, frame_width) if track.track_id > 0 else None
             display_tracks.append(
                 DisplayTrack(
                     track_id=track.track_id,

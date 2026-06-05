@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from app.camera.camera_manager import CameraProcessingManager
-from app.config.camera_config import CameraStartRequest, CameraTestRequest, CameraTestResponse, CountResponse, HealthResponse
+from app.config.camera_config import CameraStartRequest, CameraTestRequest, CameraTestResponse, CountResponse, DetectionResponse, HealthResponse
 
 
 manager = CameraProcessingManager()
@@ -28,7 +28,7 @@ def health() -> HealthResponse:
 
 @app.post("/camera/test", response_model=CameraTestResponse)
 def test_camera(payload: CameraTestRequest) -> CameraTestResponse:
-    ok, message = manager.test_connection(payload.stream_url)
+    ok, message = manager.test_connection(payload.stream_url, payload.camera_type)
     return CameraTestResponse(ok=ok, message=message)
 
 
@@ -53,6 +53,11 @@ def stop_camera() -> dict[str, str]:
 @app.get("/counts", response_model=CountResponse)
 def counts() -> CountResponse:
     return CountResponse(**manager.counts())
+
+
+@app.get("/detections", response_model=DetectionResponse)
+def detections() -> DetectionResponse:
+    return DetectionResponse(**manager.detections())
 
 
 @app.get("/stream")

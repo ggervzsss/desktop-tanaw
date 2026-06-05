@@ -37,6 +37,7 @@ class CameraStartRequest(BaseModel):
 
 class CameraTestRequest(BaseModel):
     stream_url: str = Field(..., min_length=3)
+    camera_type: CameraType = "IP_WEBCAM"
 
     @field_validator("stream_url")
     @classmethod
@@ -63,3 +64,20 @@ class CountResponse(BaseModel):
     status: str
     started_at: str | None = None
     error: str | None = None
+
+
+class DetectionTrackResponse(BaseModel):
+    track_id: int
+    bbox: tuple[int, int, int, int]
+    confidence: float
+    centroid: tuple[int, int]
+    direction: str | None = None
+
+
+class DetectionResponse(BaseModel):
+    running: bool
+    status: str
+    error: str | None = None
+    frame_width: int | None = None
+    frame_height: int | None = None
+    tracks: list[DetectionTrackResponse]

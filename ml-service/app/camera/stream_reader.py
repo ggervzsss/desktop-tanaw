@@ -2,7 +2,7 @@ import time
 import os
 import urllib.request
 from collections.abc import Iterator
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 os.environ.setdefault("OPENCV_FFMPEG_LOGLEVEL", "16")
 os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
@@ -34,6 +34,55 @@ def open_capture(stream_url: str):
 def is_mjpeg_http_stream(stream_url: str) -> bool:
     parsed = urlparse(stream_url.strip())
     return parsed.scheme in {"http", "https"}
+
+
+def build_ip_webcam_snapshot_url(stream_url: str) -> str | None:
+    parsed = urlparse(stream_url.strip())
+    if parsed.scheme not in {"http", "https"}:
+        return None
+
+    normalized_path = parsed.path.rstrip("/")
+    if normalized_path.endswith("/shot.jpg") or normalized_path == "/shot.jpg":
+        return stream_url.strip()
+
+    if normalized_path.endswith("/video"):
+        next_path = f"{normalized_path.removesuffix('/video')}/shot.jpg"
+        return urlunparse(parsed._replace(path=next_path))
+
+    if normalized_path in {"", "/"}:
+        return urlunparse(parsed._replace(path="/shot.jpg"))
+
+    return None
+
+
+def read_http_jpeg_frame(snapshot_url: str, timeout: float = 4.0):
+    request = urllib.request.Request(
+        snapshot_url,
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "close",
+            "Pragma": "no-cache",
+            "User-Agent": "TANAW-ML-Service/1.0",
+        },
+    )
+
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        jpeg_bytes = response.read()
+
+    image = np.frombuffer(jpeg_bytes, dtype=np.uint8)
+    return cv2.imdecode(image, cv2.IMREAD_COLOR)
+
+
+def validate_http_jpeg_snapshot(snapshot_url: str) -> tuple[bool, str]:
+    try:
+        frame = read_http_jpeg_frame(snapshot_url)
+    except Exception as exc:
+        return False, f"Camera snapshot endpoint could not be opened: {exc}"
+
+    if frame is None:
+        return False, "Camera snapshot endpoint opened, but no JPEG frame was readable."
+
+    return True, "Camera snapshot endpoint is reachable."
 
 
 def iter_mjpeg_frames(stream_url: str, stop_event, chunk_size: int = 8192, max_chunks: int | None = None) -> Iterator:

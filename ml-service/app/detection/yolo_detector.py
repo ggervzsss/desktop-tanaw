@@ -49,12 +49,12 @@ class YoloPersonTracker:
             return []
 
         boxes = results[0].boxes
-        if boxes is None or boxes.id is None:
+        if boxes is None:
             return []
 
         xyxy = boxes.xyxy.cpu().tolist()
-        track_ids = boxes.id.int().cpu().tolist()
         confidences = boxes.conf.cpu().tolist()
+        track_ids = boxes.id.int().cpu().tolist() if boxes.id is not None else [-(index + 1) for index in range(len(xyxy))]
 
         tracked: list[TrackResult] = []
         for bbox, track_id, score in zip(xyxy, track_ids, confidences, strict=False):
@@ -70,4 +70,3 @@ class YoloPersonTracker:
             )
 
         return tracked
-

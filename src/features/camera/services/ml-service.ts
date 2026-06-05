@@ -23,6 +23,23 @@ export type MlCounts = {
   error: string | null;
 };
 
+export type MlDetectionTrack = {
+  track_id: number;
+  bbox: [number, number, number, number];
+  confidence: number;
+  centroid: [number, number];
+  direction: string | null;
+};
+
+export type MlDetections = {
+  running: boolean;
+  status: string;
+  error: string | null;
+  frame_width: number | null;
+  frame_height: number | null;
+  tracks: MlDetectionTrack[];
+};
+
 export type CameraTestResult = {
   ok: boolean;
   message: string;
@@ -38,6 +55,15 @@ export const EMPTY_ML_COUNTS: MlCounts = {
   status: "stopped",
   started_at: null,
   error: null,
+};
+
+export const EMPTY_ML_DETECTIONS: MlDetections = {
+  running: false,
+  status: "stopped",
+  error: null,
+  frame_width: null,
+  frame_height: null,
+  tracks: [],
 };
 
 export async function getMlServiceStatus(): Promise<MlServiceStatus> {
@@ -68,12 +94,16 @@ export async function getMlCounts(baseUrl: string): Promise<MlCounts> {
   return requestJson<MlCounts>(`${baseUrl}/counts`, { method: "GET" }, 2500);
 }
 
-export async function testCameraConnection(baseUrl: string, streamUrl: string): Promise<CameraTestResult> {
+export async function getMlDetections(baseUrl: string): Promise<MlDetections> {
+  return requestJson<MlDetections>(`${baseUrl}/detections`, { method: "GET" }, 2500);
+}
+
+export async function testCameraConnection(baseUrl: string, camera: Camera): Promise<CameraTestResult> {
   return requestJson<CameraTestResult>(
     `${baseUrl}/camera/test`,
     {
       method: "POST",
-      body: JSON.stringify({ stream_url: streamUrl }),
+      body: JSON.stringify({ camera_type: camera.cameraType, stream_url: camera.rtsp }),
     },
     8000,
   );
