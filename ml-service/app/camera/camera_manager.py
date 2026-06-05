@@ -1,11 +1,15 @@
 import threading
 import time
 from dataclasses import dataclass
+import os
+
+os.environ.setdefault("OPENCV_FFMPEG_LOGLEVEL", "16")
+os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
 
 import cv2
 import numpy as np
 
-from app.camera.stream_reader import open_capture, validate_stream
+from app.camera.stream_reader import is_mjpeg_http_stream, iter_mjpeg_frames, open_capture, validate_stream
 from app.config.camera_config import CameraStartRequest
 from app.counting.tripwire_counter import TripwireCounter
 from app.detection.yolo_detector import YoloPersonTracker
@@ -18,6 +22,15 @@ class RuntimeState:
     error: str | None = None
 
 
+@dataclass(frozen=True)
+class DisplayTrack:
+    track_id: int
+    bbox: tuple[int, int, int, int]
+    confidence: float
+    centroid: tuple[int, int]
+    direction: str | None = None
+
+
 class CameraProcessingManager:
     def __init__(self) -> None:
         self._lock = threading.RLock()
@@ -28,6 +41,7 @@ class CameraProcessingManager:
         self._latest_raw_frame = None
         self._latest_raw_frame_id = 0
         self._latest_jpeg: bytes | None = None
+        self._latest_tracks: list[DisplayTrack] = []
         self._state = RuntimeState()
         self._config: CameraStartRequest | None = None
         self._counter = TripwireCounter()
@@ -60,6 +74,7 @@ class CameraProcessingManager:
             self._stop_event.clear()
             self._latest_raw_frame = None
             self._latest_raw_frame_id = 0
+            self._latest_tracks = []
             self._reader_thread = threading.Thread(target=self._capture_loop, name="tanaw-camera-reader", daemon=True)
             self._processing_thread = threading.Thread(target=self._processing_loop, name="tanaw-camera-processing", daemon=True)
             self._reader_thread.start()
@@ -80,6 +95,7 @@ class CameraProcessingManager:
             self._reader_thread = None
             self._processing_thread = None
             self._latest_raw_frame = None
+            self._latest_tracks = []
             self._state.running = False
             if self._state.status != "error":
                 self._state.status = "stopped"
@@ -96,10 +112,22 @@ class CameraProcessingManager:
 
     def latest_frame(self) -> bytes:
         with self._lock:
-            if self._latest_jpeg is not None:
+            if self._latest_raw_frame is not None and self._state.running:
+                frame = self._latest_raw_frame.copy()
+                tracks = list(self._latest_tracks)
+                tripwire_position = self._counter.tripwire_position
+                reverse_direction = self._counter.reverse_direction
+                counts = self._counter.counts
+                entry_count = counts.entry
+                exit_count = counts.exit
+                occupancy_count = counts.occupancy
+            elif self._latest_jpeg is not None:
                 return self._latest_jpeg
+            else:
+                return self._build_status_frame("No camera stream available.")
 
-            return self._build_status_frame("No camera stream available.")
+        display_frame = self._render_display_frame(frame, tracks, tripwire_position, reverse_direction, entry_count, exit_count, occupancy_count)
+        return self._encode_frame(display_frame)
 
     def _capture_loop(self) -> None:
         config = self._config
@@ -107,6 +135,30 @@ class CameraProcessingManager:
             self._set_error("Camera configuration is missing.")
             return
 
+        if is_mjpeg_http_stream(config.stream_url):
+            self._mjpeg_capture_loop(config)
+        else:
+            self._opencv_capture_loop(config)
+
+    def _mjpeg_capture_loop(self, config: CameraStartRequest) -> None:
+        try:
+            for frame in iter_mjpeg_frames(config.stream_url, self._stop_event):
+                if self._stop_event.is_set():
+                    break
+
+                frame = self._resize_for_processing(frame, config.max_frame_width)
+                self._publish_raw_frame(frame)
+
+            if not self._stop_event.is_set():
+                self._set_error("Camera stream stopped returning MJPEG frames.")
+        except Exception as exc:
+            self._set_error(str(exc))
+        finally:
+            with self._lock:
+                if self._state.status != "error":
+                    self._state.status = "stopped"
+
+    def _opencv_capture_loop(self, config: CameraStartRequest) -> None:
         capture = open_capture(config.stream_url)
         failed_reads = 0
 
@@ -127,13 +179,7 @@ class CameraProcessingManager:
 
                 failed_reads = 0
                 frame = self._resize_for_processing(frame, config.max_frame_width)
-
-                with self._raw_frame_condition:
-                    self._latest_raw_frame = frame
-                    self._latest_raw_frame_id += 1
-                    self._state.status = "running"
-                    self._state.error = None
-                    self._raw_frame_condition.notify_all()
+                self._publish_raw_frame(frame)
         except Exception as exc:
             self._set_error(str(exc))
         finally:
@@ -141,6 +187,14 @@ class CameraProcessingManager:
             with self._lock:
                 if self._state.status != "error":
                     self._state.status = "stopped"
+
+    def _publish_raw_frame(self, frame) -> None:
+        with self._raw_frame_condition:
+            self._latest_raw_frame = frame
+            self._latest_raw_frame_id += 1
+            self._state.status = "running"
+            self._state.error = None
+            self._raw_frame_condition.notify_all()
 
     def _processing_loop(self) -> None:
         config = self._config
@@ -158,12 +212,11 @@ class CameraProcessingManager:
                     continue
 
                 started_at = time.monotonic()
-                processed = self._process_frame(frame, config.confidence)
-                encoded = self._encode_frame(processed)
+                tracks = self._detect_and_count(frame, config.confidence)
                 last_processed_frame_id = frame_id
 
                 with self._lock:
-                    self._latest_jpeg = encoded
+                    self._latest_tracks = tracks
                     self._state.status = "running"
                     self._state.error = None
 
@@ -191,13 +244,40 @@ class CameraProcessingManager:
 
             return self._latest_raw_frame.copy(), self._latest_raw_frame_id
 
-    def _process_frame(self, frame, confidence: float):
-        height, width = frame.shape[:2]
-        line_x = self._counter.line_x(width)
+    def _detect_and_count(self, frame, confidence: float) -> list[DisplayTrack]:
+        frame_width = frame.shape[1]
         tracks = self._tracker.track_people(frame, confidence)
+        display_tracks: list[DisplayTrack] = []
+
+        for track in tracks:
+            direction = self._counter.update(track.track_id, track.centroid, frame_width)
+            display_tracks.append(
+                DisplayTrack(
+                    track_id=track.track_id,
+                    bbox=track.bbox,
+                    confidence=track.confidence,
+                    centroid=(int(track.centroid.x), int(track.centroid.y)),
+                    direction=direction,
+                )
+            )
+
+        return display_tracks
+
+    def _render_display_frame(
+        self,
+        frame,
+        tracks: list[DisplayTrack],
+        tripwire_position: float,
+        reverse_direction: bool,
+        entry_count: int,
+        exit_count: int,
+        occupancy_count: int,
+    ):
+        height, width = frame.shape[:2]
+        line_x = int(width * tripwire_position)
 
         cv2.line(frame, (line_x, 0), (line_x, height), (59, 130, 246), 2)
-        if self._counter.reverse_direction:
+        if reverse_direction:
             cv2.putText(frame, "ENTRY", (max(8, line_x - 92), 28), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (74, 222, 128), 2, cv2.LINE_AA)
             cv2.putText(frame, "EXIT", (line_x + 12, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (248, 113, 113), 2, cv2.LINE_AA)
         else:
@@ -206,17 +286,15 @@ class CameraProcessingManager:
 
         for track in tracks:
             x1, y1, x2, y2 = track.bbox
-            direction = self._counter.update(track.track_id, track.centroid, width)
-            color = (74, 222, 128) if direction == "entry" else (248, 113, 113) if direction == "exit" else (34, 197, 94)
+            color = (74, 222, 128) if track.direction == "entry" else (248, 113, 113) if track.direction == "exit" else (34, 197, 94)
 
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-            cv2.circle(frame, (int(track.centroid.x), int(track.centroid.y)), 4, (250, 204, 21), -1)
+            cv2.circle(frame, track.centroid, 4, (250, 204, 21), -1)
             label = f"ID {track.track_id} {track.confidence:.2f}"
             cv2.rectangle(frame, (x1, max(0, y1 - 26)), (x1 + 126, y1), color, -1)
             cv2.putText(frame, label, (x1 + 6, max(18, y1 - 7)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (15, 23, 42), 1, cv2.LINE_AA)
 
-        counts = self._counter.counts
-        status = f"Entry {counts.entry}  Exit {counts.exit}  Occupancy {counts.occupancy}"
+        status = f"Entry {entry_count}  Exit {exit_count}  Occupancy {occupancy_count}"
         cv2.rectangle(frame, (12, height - 44), (380, height - 12), (15, 23, 42), -1)
         cv2.putText(frame, status, (24, height - 22), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2, cv2.LINE_AA)
 

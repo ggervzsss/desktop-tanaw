@@ -61,6 +61,6 @@ async def stream():
         while True:
             frame = manager.latest_frame()
             yield b"--frame\r\nContent-Type: image/jpeg\r\nCache-Control: no-cache\r\n\r\n" + frame + b"\r\n"
-            await asyncio.sleep(0.16)
+            await asyncio.sleep(0.08)
 
     return StreamingResponse(frames(), media_type="multipart/x-mixed-replace; boundary=frame")

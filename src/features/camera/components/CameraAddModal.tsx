@@ -17,9 +17,9 @@ export function CameraAddModal({ newCam, isValidating, errors, onClose, onSubmit
 
   return (
     <ModalPortal>
-      <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-[#111827]/70 p-4 backdrop-blur-md" onPointerDown={onClose}>
+      <div className="fixed inset-0 z-1100 flex items-center justify-center bg-[#111827]/70 p-4 backdrop-blur-md" onPointerDown={onClose}>
         <div className="animate-in fade-in max-h-[92vh] w-full max-w-2xl overflow-hidden rounded-2xl border border-white/80 bg-white shadow-2xl" onPointerDown={(event) => event.stopPropagation()}>
-          <div className="h-1.5 rounded-t-2xl bg-gradient-to-r from-[#065f46] via-emerald-500 to-[#45a549]" />
+          <div className="h-1.5 rounded-t-2xl bg-linear-to-r from-[#065f46] via-emerald-500 to-[#45a549]" />
           <div className="max-h-[calc(92vh-0.375rem)] overflow-auto p-6">
           <div className="mb-6 flex items-center justify-between">
             <h3 className="flex items-center gap-2 text-lg font-bold text-[#111827]">
