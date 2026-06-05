@@ -92,6 +92,7 @@ export async function startCameraProcessing(baseUrl: string, camera: Camera): Pr
         password: camera.password || null,
         processing_fps: 5,
         reverse_direction: camera.config.reverse,
+        stream_fps: 24,
         stream_url: camera.rtsp,
         tripwire_position: camera.config.tripwire / 100,
         username: camera.username || null,
@@ -107,6 +108,18 @@ export async function stopCameraProcessing(baseUrl: string): Promise<{ message: 
 
 export function getStreamUrl(baseUrl: string, version: number) {
   return `${baseUrl}/stream?v=${version}`;
+}
+
+export function getPreviewStreamUrl(baseUrl: string, camera: Camera | undefined, version: number) {
+  if (camera && isNativeBrowserMjpegCamera(camera)) {
+    return camera.rtsp.trim();
+  }
+
+  return getStreamUrl(baseUrl, version);
+}
+
+function isNativeBrowserMjpegCamera(camera: Camera) {
+  return camera.cameraType === "IP_WEBCAM" && /^https?:\/\//i.test(camera.rtsp.trim());
 }
 
 async function requestJson<T>(url: string, init: RequestInit, timeoutMs: number): Promise<T> {

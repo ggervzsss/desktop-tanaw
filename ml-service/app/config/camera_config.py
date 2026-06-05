@@ -16,6 +16,7 @@ class CameraStartRequest(BaseModel):
     tripwire_position: float = Field(default=0.5, ge=0.1, le=0.9)
     reverse_direction: bool = False
     processing_fps: float = Field(default=5.0, ge=1.0, le=15.0)
+    stream_fps: float = Field(default=24.0, ge=1.0, le=30.0)
     max_frame_width: int = Field(default=640, ge=320, le=1280)
 
     @field_validator("stream_url")

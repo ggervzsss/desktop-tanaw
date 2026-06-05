@@ -58,9 +58,9 @@ def counts() -> CountResponse:
 @app.get("/stream")
 async def stream():
     async def frames():
+        last_frame_id = 0
         while True:
-            frame = manager.latest_frame()
+            frame, last_frame_id = await asyncio.to_thread(manager.wait_for_stream_frame, last_frame_id)
             yield b"--frame\r\nContent-Type: image/jpeg\r\nCache-Control: no-cache\r\n\r\n" + frame + b"\r\n"
-            await asyncio.sleep(0.08)
 
     return StreamingResponse(frames(), media_type="multipart/x-mixed-replace; boundary=frame")

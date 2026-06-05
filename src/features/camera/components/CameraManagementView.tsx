@@ -13,8 +13,8 @@ import {
   EMPTY_ML_COUNTS,
   getMlCounts,
   getMlHealth,
+  getPreviewStreamUrl,
   getMlServiceStatus,
-  getStreamUrl,
   restartMlService,
   startCameraProcessing,
   stopCameraProcessing,
@@ -65,7 +65,7 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
   const activeCam = cameras.find((camera) => camera.id === activeCamId);
   const warnings = isEditMode && editForm ? getValidationWarnings(editForm.config) : getValidationWarnings(activeCam?.config);
   const mlBaseUrl = serviceStatus?.baseUrl ?? DEFAULT_ML_SERVICE_BASE_URL;
-  const streamUrl = useMemo(() => getStreamUrl(mlBaseUrl, streamVersion), [mlBaseUrl, streamVersion]);
+  const streamUrl = useMemo(() => getPreviewStreamUrl(mlBaseUrl, activeCam, streamVersion), [activeCam, mlBaseUrl, streamVersion]);
 
   const updateCameraStatus = useCallback(
     (cameraId: number, status: Camera["status"]) => {

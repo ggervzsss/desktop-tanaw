@@ -11,11 +11,12 @@ type CameraVideoPreviewProps = {
 
 export function CameraVideoPreview({ activeCam, editForm, isProcessing, isEditMode, streamUrl }: CameraVideoPreviewProps) {
   const streamIsAvailable = isProcessing && streamUrl;
+  const overlayConfig = isEditMode && editForm ? editForm.config : activeCam.config;
 
   return (
     <div className={`relative mb-5 aspect-video w-full overflow-hidden rounded-sm bg-[#111827] ${isEditMode ? "ring-2 ring-[#065f46] ring-offset-2" : ""}`}>
       {streamIsAvailable ? (
-        <img key={streamUrl} src={streamUrl} alt={`${activeCam.name} processed camera stream`} className="absolute inset-0 h-full w-full object-contain" draggable={false} />
+        <img key={streamUrl} src={streamUrl} alt={`${activeCam.name} live camera stream`} className="absolute inset-0 h-full w-full object-contain" draggable={false} />
       ) : activeCam.status === "online" || activeCam.status === "untested" || activeCam.status === "stopped" ? (
         <div className="absolute inset-0 bg-[url('https://upload.wikimedia.org/wikipedia/commons/thumb/a/ad/6346Poblacion_City_Hall_San_Pedro_Laguna_27.jpg/1280px-6346Poblacion_City_Hall_San_Pedro_Laguna_27.jpg')] bg-cover bg-center opacity-40"></div>
       ) : (
@@ -23,7 +24,7 @@ export function CameraVideoPreview({ activeCam, editForm, isProcessing, isEditMo
       )}
       {!streamIsAvailable && <div className="absolute inset-0 bg-black/30"></div>}
 
-      {!streamIsAvailable && <CameraOverlayConfig config={isEditMode && editForm ? editForm.config : activeCam.config} isEditMode={isEditMode} />}
+      <CameraOverlayConfig config={overlayConfig} isEditMode={isEditMode} />
 
       {(streamIsAvailable || activeCam.status === "online") && (
         <div className="absolute top-3 right-3 flex gap-2">
@@ -35,7 +36,7 @@ export function CameraVideoPreview({ activeCam, editForm, isProcessing, isEditMo
         </div>
       )}
 
-      <div className="pointer-events-none absolute bottom-3 left-3 font-['Bai_Jamjuree'] text-2xl font-bold text-white/30 select-none">{streamIsAvailable ? "TANAW Processed Feed" : "TANAW Edge Preview"}</div>
+      <div className="pointer-events-none absolute bottom-3 left-3 font-['Bai_Jamjuree'] text-2xl font-bold text-white/30 select-none">{streamIsAvailable ? "TANAW Live Feed" : "TANAW Edge Preview"}</div>
     </div>
   );
 }

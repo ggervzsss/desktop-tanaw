@@ -37,10 +37,13 @@ class CameraProcessingManager:
         self._stop_event = threading.Event()
         self._processing_thread: threading.Thread | None = None
         self._reader_thread: threading.Thread | None = None
+        self._stream_thread: threading.Thread | None = None
         self._raw_frame_condition = threading.Condition(self._lock)
         self._latest_raw_frame = None
         self._latest_raw_frame_id = 0
         self._latest_jpeg: bytes | None = None
+        self._latest_stream_jpeg: bytes | None = None
+        self._latest_stream_frame_id = 0
         self._latest_tracks: list[DisplayTrack] = []
         self._state = RuntimeState()
         self._config: CameraStartRequest | None = None
@@ -70,6 +73,8 @@ class CameraProcessingManager:
             )
             self._counter.reset()
             self._latest_jpeg = self._build_status_frame("Starting camera processing...")
+            self._latest_stream_jpeg = self._latest_jpeg
+            self._latest_stream_frame_id = 0
             self._state = RuntimeState(running=True, status="running", error=None)
             self._stop_event.clear()
             self._latest_raw_frame = None
@@ -77,13 +82,15 @@ class CameraProcessingManager:
             self._latest_tracks = []
             self._reader_thread = threading.Thread(target=self._capture_loop, name="tanaw-camera-reader", daemon=True)
             self._processing_thread = threading.Thread(target=self._processing_loop, name="tanaw-camera-processing", daemon=True)
+            self._stream_thread = threading.Thread(target=self._stream_encoding_loop, name="tanaw-camera-stream-encoder", daemon=True)
             self._reader_thread.start()
             self._processing_thread.start()
+            self._stream_thread.start()
 
     def stop(self) -> None:
         threads: list[threading.Thread]
         with self._lock:
-            threads = [thread for thread in (self._reader_thread, self._processing_thread) if thread is not None]
+            threads = [thread for thread in (self._reader_thread, self._processing_thread, self._stream_thread) if thread is not None]
             self._stop_event.set()
             self._raw_frame_condition.notify_all()
 
@@ -94,6 +101,7 @@ class CameraProcessingManager:
         with self._lock:
             self._reader_thread = None
             self._processing_thread = None
+            self._stream_thread = None
             self._latest_raw_frame = None
             self._latest_tracks = []
             self._state.running = False
@@ -112,22 +120,27 @@ class CameraProcessingManager:
 
     def latest_frame(self) -> bytes:
         with self._lock:
-            if self._latest_raw_frame is not None and self._state.running:
-                frame = self._latest_raw_frame.copy()
-                tracks = list(self._latest_tracks)
-                tripwire_position = self._counter.tripwire_position
-                reverse_direction = self._counter.reverse_direction
-                counts = self._counter.counts
-                entry_count = counts.entry
-                exit_count = counts.exit
-                occupancy_count = counts.occupancy
-            elif self._latest_jpeg is not None:
+            if self._latest_stream_jpeg is not None:
+                return self._latest_stream_jpeg
+            if self._latest_jpeg is not None:
                 return self._latest_jpeg
             else:
                 return self._build_status_frame("No camera stream available.")
 
-        display_frame = self._render_display_frame(frame, tracks, tripwire_position, reverse_direction, entry_count, exit_count, occupancy_count)
-        return self._encode_frame(display_frame)
+    def wait_for_stream_frame(self, last_frame_id: int, timeout: float = 1.0) -> tuple[bytes, int]:
+        with self._raw_frame_condition:
+            self._raw_frame_condition.wait_for(
+                lambda: self._latest_stream_frame_id > last_frame_id,
+                timeout=timeout,
+            )
+
+            if self._latest_stream_jpeg is not None:
+                return self._latest_stream_jpeg, self._latest_stream_frame_id
+
+            if self._latest_jpeg is not None:
+                return self._latest_jpeg, last_frame_id
+
+        return self._build_status_frame("No camera stream available."), last_frame_id
 
     def _capture_loop(self) -> None:
         config = self._config
@@ -232,6 +245,71 @@ class CameraProcessingManager:
                 if self._state.status != "error":
                     self._state.status = "stopped"
 
+    def _stream_encoding_loop(self) -> None:
+        config = self._config
+        if config is None:
+            self._set_error("Camera configuration is missing.")
+            return
+
+        last_encoded_raw_frame_id = 0
+        frame_interval = 1.0 / max(config.stream_fps, 1.0)
+
+        try:
+            while not self._stop_event.is_set():
+                frame_snapshot = self._next_display_frame_snapshot(last_encoded_raw_frame_id, timeout=1.0)
+                if frame_snapshot is None:
+                    continue
+
+                (
+                    frame,
+                    raw_frame_id,
+                    tracks,
+                    tripwire_position,
+                    reverse_direction,
+                    entry_count,
+                    exit_count,
+                    occupancy_count,
+                ) = frame_snapshot
+
+                started_at = time.monotonic()
+                display_frame = self._render_display_frame(frame, tracks, tripwire_position, reverse_direction, entry_count, exit_count, occupancy_count)
+                encoded = self._encode_frame(display_frame)
+
+                with self._raw_frame_condition:
+                    self._latest_stream_jpeg = encoded
+                    self._latest_stream_frame_id += 1
+                    last_encoded_raw_frame_id = raw_frame_id
+                    self._raw_frame_condition.notify_all()
+
+                elapsed = time.monotonic() - started_at
+                remaining = frame_interval - elapsed
+                if remaining > 0:
+                    time.sleep(remaining)
+        except Exception as exc:
+            self._set_error(str(exc))
+
+    def _next_display_frame_snapshot(self, last_encoded_raw_frame_id: int, timeout: float):
+        with self._raw_frame_condition:
+            self._raw_frame_condition.wait_for(
+                lambda: self._stop_event.is_set() or self._latest_raw_frame_id > last_encoded_raw_frame_id,
+                timeout=timeout,
+            )
+
+            if self._stop_event.is_set() or self._latest_raw_frame is None or self._latest_raw_frame_id <= last_encoded_raw_frame_id:
+                return None
+
+            counts = self._counter.counts
+            return (
+                self._latest_raw_frame.copy(),
+                self._latest_raw_frame_id,
+                list(self._latest_tracks),
+                self._counter.tripwire_position,
+                self._counter.reverse_direction,
+                counts.entry,
+                counts.exit,
+                counts.occupancy,
+            )
+
     def _wait_for_latest_frame(self, last_processed_frame_id: int):
         with self._raw_frame_condition:
             self._raw_frame_condition.wait_for(
@@ -318,6 +396,8 @@ class CameraProcessingManager:
         with self._raw_frame_condition:
             self._state = RuntimeState(running=False, status="error", error=message)
             self._latest_jpeg = self._build_status_frame(message)
+            self._latest_stream_jpeg = self._latest_jpeg
+            self._latest_stream_frame_id += 1
             self._stop_event.set()
             self._raw_frame_condition.notify_all()
 
