@@ -22,3 +22,12 @@ contextBridge.exposeInMainWorld("ipcRenderer", {
   // You can expose other APTs you need here.
   // ...
 });
+
+contextBridge.exposeInMainWorld("tanawMlService", {
+  getStatus() {
+    return ipcRenderer.invoke("ml-service:get-status");
+  },
+  restart() {
+    return ipcRenderer.invoke("ml-service:restart");
+  },
+});

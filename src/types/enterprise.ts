@@ -34,15 +34,22 @@ export type ReportRecord = {
   remarks?: string | null;
 };
 
+export type CameraType = "IP_WEBCAM" | "RTSP_CCTV" | "USB_WEBCAM" | "ONVIF_CCTV";
+export type CameraStatus = "untested" | "online" | "offline" | "running" | "stopped" | "error";
+
 export type Camera = {
   id: number;
   name: string;
-  status: string;
+  status: CameraStatus;
   zone: string;
   fps: number;
   resolution: string;
   type: string;
   rtsp: string;
+  cameraType: CameraType;
+  confidence: number;
+  username?: string;
+  password?: string;
   config: {
     tripwire: number;
     roi: {

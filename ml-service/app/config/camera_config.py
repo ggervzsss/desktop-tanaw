@@ -1,0 +1,62 @@
+from typing import Literal
+
+from pydantic import BaseModel, Field, field_validator
+
+
+CameraType = Literal["IP_WEBCAM", "RTSP_CCTV", "USB_WEBCAM", "ONVIF_CCTV"]
+
+
+class CameraStartRequest(BaseModel):
+    stream_url: str = Field(..., min_length=3)
+    confidence: float = Field(default=0.35, ge=0.05, le=0.95)
+    camera_name: str | None = Field(default=None, max_length=120)
+    camera_type: CameraType = "IP_WEBCAM"
+    username: str | None = Field(default=None, max_length=120)
+    password: str | None = Field(default=None, max_length=240)
+    tripwire_position: float = Field(default=0.5, ge=0.1, le=0.9)
+    reverse_direction: bool = False
+
+    @field_validator("stream_url")
+    @classmethod
+    def validate_stream_url(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Stream URL is required.")
+
+        if normalized.isdigit():
+            return normalized
+
+        if normalized.startswith(("http://", "https://", "rtsp://")):
+            return normalized
+
+        raise ValueError("Stream URL must start with http://, https://, rtsp://, or be a numeric webcam index.")
+
+
+class CameraTestRequest(BaseModel):
+    stream_url: str = Field(..., min_length=3)
+
+    @field_validator("stream_url")
+    @classmethod
+    def validate_stream_url(cls, value: str) -> str:
+        return CameraStartRequest(stream_url=value).stream_url
+
+
+class CameraTestResponse(BaseModel):
+    ok: bool
+    message: str
+
+
+class HealthResponse(BaseModel):
+    status: Literal["ok"] = "ok"
+    running: bool
+    error: str | None = None
+
+
+class CountResponse(BaseModel):
+    entry: int
+    exit: int
+    occupancy: int
+    running: bool
+    status: str
+    started_at: str | None = None
+    error: str | None = None

@@ -8,6 +8,13 @@
     output: "release/${version}",
   },
   files: ["dist", "dist-electron"],
+  extraResources: [
+    {
+      from: "ml-service",
+      to: "ml-service",
+      filter: ["**/*.py", "pyproject.toml", "uv.lock", ".python-version", "README.md", "models/**"],
+    },
+  ],
   mac: {
     target: ["dmg"],
     artifactName: "${productName}-Mac-${version}-Installer.${ext}",

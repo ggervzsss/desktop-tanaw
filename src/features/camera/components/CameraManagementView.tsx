@@ -1,20 +1,44 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { ConfirmationDialog } from "../../../components/ConfirmationDialog";
 import type { Camera } from "../../../types/enterprise";
+import { validateCameraStreamUrl, validateRequiredText } from "../../../utils/form-validation";
 import { CameraAddModal } from "./CameraAddModal";
 import { CameraList } from "./CameraList";
 import { CameraPreviewPanel } from "./CameraPreviewPanel";
 import type { CameraFormValues } from "../types/camera";
 import { getValidationWarnings } from "../utils/camera-validation";
-import { validateRequiredText, validateRtspUrl } from "../../../utils/form-validation";
+import {
+  DEFAULT_ML_SERVICE_BASE_URL,
+  EMPTY_ML_COUNTS,
+  getMlCounts,
+  getMlHealth,
+  getMlServiceStatus,
+  getStreamUrl,
+  restartMlService,
+  startCameraProcessing,
+  stopCameraProcessing,
+  testCameraConnection,
+} from "../services/ml-service";
+import type { MlCounts, MlHealth, MlServiceStatus } from "../services/ml-service";
 
 type CameraManagementViewProps = {
   cameras: Camera[];
   setCameras: React.Dispatch<React.SetStateAction<Camera[]>>;
 };
 
-const emptyCameraForm: CameraFormValues = { name: "", rtsp: "", zone: "" };
+const CAMERA_STORAGE_KEY = "tanaw.enterprise.camera-configs";
+
+const emptyCameraForm: CameraFormValues = {
+  cameraType: "IP_WEBCAM",
+  confidence: 0.35,
+  name: "",
+  password: "",
+  rtsp: "",
+  username: "",
+  zone: "",
+};
+
 type CameraFormErrors = Partial<Record<keyof CameraFormValues, string>>;
 
 export function CameraManagementView({ cameras, setCameras }: CameraManagementViewProps) {
@@ -26,15 +50,103 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
   const [isValidating, setIsValidating] = useState(false);
   const [editForm, setEditForm] = useState<Camera | null>(null);
   const [cameraPendingDelete, setCameraPendingDelete] = useState<Camera | null>(null);
+  const [hydratedFromStorage, setHydratedFromStorage] = useState(false);
+  const [serviceStatus, setServiceStatus] = useState<MlServiceStatus | null>(null);
+  const [health, setHealth] = useState<MlHealth | null>(null);
+  const [counts, setCounts] = useState<MlCounts>(EMPTY_ML_COUNTS);
+  const [processingCameraId, setProcessingCameraId] = useState<number | null>(null);
+  const [monitoringError, setMonitoringError] = useState<string | null>(null);
+  const [streamVersion, setStreamVersion] = useState(0);
+  const [isTesting, setIsTesting] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
+  const [isRestartingService, setIsRestartingService] = useState(false);
 
   const activeCam = cameras.find((camera) => camera.id === activeCamId);
   const warnings = isEditMode && editForm ? getValidationWarnings(editForm.config) : getValidationWarnings(activeCam?.config);
+  const mlBaseUrl = serviceStatus?.baseUrl ?? DEFAULT_ML_SERVICE_BASE_URL;
+  const streamUrl = useMemo(() => getStreamUrl(mlBaseUrl, streamVersion), [mlBaseUrl, streamVersion]);
+
+  const updateCameraStatus = useCallback(
+    (cameraId: number, status: Camera["status"]) => {
+      setCameras((current) => current.map((camera) => (camera.id === cameraId ? { ...camera, status } : camera)));
+    },
+    [setCameras],
+  );
+
+  const refreshMlStatus = useCallback(async () => {
+    const nextStatus = await getMlServiceStatus();
+    setServiceStatus(nextStatus);
+
+    try {
+      const nextHealth = await getMlHealth(nextStatus.baseUrl);
+      setHealth(nextHealth);
+    } catch (error) {
+      setHealth(null);
+      setMonitoringError(toErrorMessage(error));
+    }
+  }, []);
+
+  const refreshCounts = useCallback(async () => {
+    try {
+      const nextCounts = await getMlCounts(mlBaseUrl);
+      setCounts(nextCounts);
+
+      if (!nextCounts.running) {
+        setProcessingCameraId(null);
+        setCameras((current) => current.map((camera) => (camera.status === "running" ? { ...camera, status: nextCounts.status === "error" ? "error" : "stopped" } : camera)));
+      }
+    } catch {
+      setCounts((current) => ({ ...current, running: false, status: "offline" }));
+    }
+  }, [mlBaseUrl, setCameras]);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem(CAMERA_STORAGE_KEY);
+    if (!saved) {
+      setHydratedFromStorage(true);
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(saved) as Camera[];
+      const normalized = parsed.map(normalizeCamera);
+      setCameras(normalized);
+      setActiveCamId(normalized[0]?.id ?? null);
+    } catch {
+      window.localStorage.removeItem(CAMERA_STORAGE_KEY);
+    } finally {
+      setHydratedFromStorage(true);
+    }
+  }, [setCameras]);
+
+  useEffect(() => {
+    if (!hydratedFromStorage) return;
+    window.localStorage.setItem(CAMERA_STORAGE_KEY, JSON.stringify(cameras));
+  }, [cameras, hydratedFromStorage]);
+
+  useEffect(() => {
+    if (activeCamId !== null && cameras.some((camera) => camera.id === activeCamId)) return;
+    setActiveCamId(cameras[0]?.id ?? null);
+  }, [activeCamId, cameras]);
 
   useEffect(() => {
     if (activeCam) {
       setEditForm(JSON.parse(JSON.stringify(activeCam)) as Camera);
     }
   }, [activeCam]);
+
+  useEffect(() => {
+    void refreshMlStatus();
+    const intervalId = window.setInterval(() => void refreshMlStatus(), 4000);
+    return () => window.clearInterval(intervalId);
+  }, [refreshMlStatus]);
+
+  useEffect(() => {
+    void refreshCounts();
+    const intervalId = window.setInterval(() => void refreshCounts(), 1000);
+    return () => window.clearInterval(intervalId);
+  }, [refreshCounts]);
 
   const handleDelete = () => {
     if (!activeCam) return;
@@ -53,7 +165,20 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
 
   const handleSave = () => {
     if (!editForm) return;
-    setCameras((current) => current.map((camera) => (camera.id === activeCamId ? editForm : camera)));
+
+    const rtspError = validateCameraStreamUrl(editForm.rtsp);
+    if (rtspError) {
+      setMonitoringError(rtspError);
+      return;
+    }
+
+    if (!Number.isFinite(editForm.confidence) || editForm.confidence < 0.05 || editForm.confidence > 0.95) {
+      setMonitoringError("Confidence threshold must be between 0.05 and 0.95.");
+      return;
+    }
+
+    setCameras((current) => current.map((camera) => (camera.id === activeCamId ? { ...editForm, status: camera.rtsp === editForm.rtsp ? editForm.status : "untested" } : camera)));
+    setMonitoringError(null);
     setIsEditMode(false);
   };
 
@@ -65,30 +190,33 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
 
     setIsValidating(true);
 
-    window.setTimeout(() => {
-      const newCameraNode: Camera = {
-        id: Date.now(),
-        name: newCam.name.trim(),
-        status: "online",
-        zone: newCam.zone.trim(),
-        fps: 30,
-        resolution: "1080p",
-        type: "Entry/Exit",
-        rtsp: newCam.rtsp.trim(),
-        config: {
-          tripwire: 50,
-          roi: { top: 10, left: 10, width: 80, height: 80 },
-          reverse: false,
-        },
-      };
+    const newCameraNode: Camera = {
+      cameraType: newCam.cameraType,
+      confidence: newCam.confidence,
+      config: {
+        reverse: false,
+        roi: { top: 10, left: 10, width: 80, height: 80 },
+        tripwire: 50,
+      },
+      fps: 0,
+      id: Date.now(),
+      name: newCam.name.trim(),
+      password: newCam.password.trim() || undefined,
+      resolution: "Adaptive",
+      rtsp: newCam.rtsp.trim(),
+      status: "untested",
+      type: "Entry/Exit",
+      username: newCam.username.trim() || undefined,
+      zone: newCam.zone.trim(),
+    };
 
-      setCameras([...cameras, newCameraNode]);
-      setActiveCamId(newCameraNode.id);
-      setNewCam(emptyCameraForm);
-      setCameraFormErrors({});
-      setIsValidating(false);
-      setShowAddModal(false);
-    }, 1500);
+    setCameras((current) => [...current, newCameraNode]);
+    setActiveCamId(newCameraNode.id);
+    setNewCam(emptyCameraForm);
+    setCameraFormErrors({});
+    setMonitoringError(null);
+    setIsValidating(false);
+    setShowAddModal(false);
   };
 
   const handleNewCameraChange = (values: CameraFormValues) => {
@@ -100,6 +228,86 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
     setShowAddModal(false);
     setCameraFormErrors({});
   };
+
+  const handleTestConnection = useCallback(async () => {
+    if (!activeCam) return;
+
+    setIsTesting(true);
+    setMonitoringError(null);
+
+    try {
+      const result = await testCameraConnection(mlBaseUrl, activeCam.rtsp);
+      updateCameraStatus(activeCam.id, result.ok ? "online" : "offline");
+      setMonitoringError(result.ok ? null : result.message);
+      await refreshMlStatus();
+    } catch (error) {
+      updateCameraStatus(activeCam.id, "error");
+      setMonitoringError(toErrorMessage(error));
+    } finally {
+      setIsTesting(false);
+    }
+  }, [activeCam, mlBaseUrl, refreshMlStatus, updateCameraStatus]);
+
+  const handleStartProcessing = useCallback(async () => {
+    if (!activeCam) return;
+
+    setIsStarting(true);
+    setMonitoringError(null);
+
+    try {
+      await startCameraProcessing(mlBaseUrl, activeCam);
+      updateCameraStatus(activeCam.id, "running");
+      setProcessingCameraId(activeCam.id);
+      setCounts({ ...EMPTY_ML_COUNTS, running: true, status: "running" });
+      setStreamVersion((current) => current + 1);
+      await refreshMlStatus();
+      await refreshCounts();
+    } catch (error) {
+      updateCameraStatus(activeCam.id, "error");
+      setMonitoringError(toErrorMessage(error));
+    } finally {
+      setIsStarting(false);
+    }
+  }, [activeCam, mlBaseUrl, refreshCounts, refreshMlStatus, updateCameraStatus]);
+
+  const handleStopProcessing = useCallback(async () => {
+    const cameraId = processingCameraId ?? activeCam?.id;
+    if (!cameraId) return;
+
+    setIsStopping(true);
+    setMonitoringError(null);
+
+    try {
+      await stopCameraProcessing(mlBaseUrl);
+      updateCameraStatus(cameraId, "stopped");
+      setProcessingCameraId(null);
+      setCounts(EMPTY_ML_COUNTS);
+      setStreamVersion((current) => current + 1);
+      await refreshMlStatus();
+      await refreshCounts();
+    } catch (error) {
+      setMonitoringError(toErrorMessage(error));
+    } finally {
+      setIsStopping(false);
+    }
+  }, [activeCam?.id, mlBaseUrl, processingCameraId, refreshCounts, refreshMlStatus, updateCameraStatus]);
+
+  const handleRestartService = useCallback(async () => {
+    setIsRestartingService(true);
+    setMonitoringError(null);
+
+    try {
+      const nextStatus = await restartMlService();
+      setServiceStatus(nextStatus);
+      setProcessingCameraId(null);
+      setCounts(EMPTY_ML_COUNTS);
+      setStreamVersion((current) => current + 1);
+    } catch (error) {
+      setMonitoringError(toErrorMessage(error));
+    } finally {
+      setIsRestartingService(false);
+    }
+  }, []);
 
   return (
     <div className="animate-in fade-in space-y-6 font-['Inter'] duration-500">
@@ -121,8 +329,8 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
 
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-[#111827]">Edge Device Management</h2>
-          <p className="mt-1 text-sm text-gray-500">Configure RTSP streams and visual counting zones for your establishment.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-[#111827]">Camera Integration & Counting</h2>
+          <p className="mt-1 text-sm text-gray-500">Configure IP Webcam streams, run local YOLOv8 processing, and monitor tripwire counts.</p>
         </div>
         <button
           onClick={() => {
@@ -150,14 +358,28 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
         <div className="lg:col-span-2">
           <CameraPreviewPanel
             activeCam={activeCam}
+            counts={counts}
             editForm={editForm}
+            error={monitoringError}
+            health={health}
+            isRestartingService={isRestartingService}
             isEditMode={isEditMode}
+            isStarting={isStarting}
+            isStopping={isStopping}
+            isTesting={isTesting}
+            processingCameraId={processingCameraId}
+            serviceStatus={serviceStatus}
+            streamUrl={streamUrl}
             warnings={warnings}
             onCancelEdit={() => setIsEditMode(false)}
             onDelete={handleDelete}
             onEdit={() => setIsEditMode(true)}
-            onSave={handleSave}
             onEditFormChange={setEditForm}
+            onRestartService={handleRestartService}
+            onSave={handleSave}
+            onStartProcessing={handleStartProcessing}
+            onStopProcessing={handleStopProcessing}
+            onTestConnection={handleTestConnection}
           />
         </div>
       </div>
@@ -169,11 +391,32 @@ function validateCameraForm(values: CameraFormValues) {
   const errors: CameraFormErrors = {};
   const nameError = validateRequiredText(values.name, "Camera name", 2);
   const zoneError = validateRequiredText(values.zone, "Assigned zone", 2);
-  const rtspError = validateRtspUrl(values.rtsp);
+  const streamError = validateCameraStreamUrl(values.rtsp);
 
   if (nameError) errors.name = nameError;
   if (zoneError) errors.zone = zoneError;
-  if (rtspError) errors.rtsp = rtspError;
+  if (streamError) errors.rtsp = streamError;
+  if (!Number.isFinite(values.confidence) || values.confidence < 0.05 || values.confidence > 0.95) {
+    errors.confidence = "Confidence threshold must be between 0.05 and 0.95.";
+  }
 
   return errors;
+}
+
+function normalizeCamera(camera: Camera): Camera {
+  const streamUrl = camera.rtsp ?? "";
+  const cameraType = camera.cameraType ?? (streamUrl.startsWith("http") ? "IP_WEBCAM" : "RTSP_CCTV");
+
+  return {
+    ...camera,
+    cameraType,
+    confidence: camera.confidence ?? 0.35,
+    fps: camera.fps ?? 0,
+    resolution: camera.resolution ?? "Adaptive",
+    status: camera.status ?? "untested",
+  };
+}
+
+function toErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "The ML camera service request failed.";
 }

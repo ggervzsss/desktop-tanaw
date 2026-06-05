@@ -25,13 +25,13 @@ export function CameraList({ cameras, activeCamId, onSelect }: CameraListProps) 
             >
               <div className="mb-2 flex items-start justify-between">
                 <span className={`truncate pr-2 text-sm font-bold ${isActive ? "text-[#065f46]" : "text-[#111827]"}`}>{camera.name}</span>
-                <div className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${camera.status === "online" ? "bg-[#45a549] shadow-[0_0_4px_#45a549]" : "bg-[#a40e0e]"}`}></div>
+                <div className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${["online", "running"].includes(camera.status) ? "bg-[#45a549] shadow-[0_0_4px_#45a549]" : "bg-[#a40e0e]"}`}></div>
               </div>
               <div className="grid grid-cols-2 gap-1.5 text-xs font-medium text-gray-500">
                 <span className="truncate">Zone: {camera.zone}</span>
-                <span className="truncate">Type: {camera.type}</span>
+                <span className="truncate">Type: {formatCameraType(camera.cameraType)}</span>
                 <span>Res: {camera.resolution}</span>
-                <span>FPS: {camera.fps}</span>
+                <span className="capitalize">Status: {camera.status}</span>
               </div>
             </div>
           );
@@ -40,4 +40,15 @@ export function CameraList({ cameras, activeCamId, onSelect }: CameraListProps) 
       </div>
     </Card>
   );
+}
+
+function formatCameraType(cameraType: Camera["cameraType"]) {
+  const labels: Record<Camera["cameraType"], string> = {
+    IP_WEBCAM: "IP Webcam",
+    ONVIF_CCTV: "ONVIF CCTV",
+    RTSP_CCTV: "RTSP CCTV",
+    USB_WEBCAM: "USB Webcam",
+  };
+
+  return labels[cameraType];
 }

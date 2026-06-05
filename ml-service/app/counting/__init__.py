@@ -1,0 +1,2 @@
+"""Tripwire-based counting utilities."""
+

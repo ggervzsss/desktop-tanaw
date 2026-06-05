@@ -20,15 +20,15 @@ export function CameraOverlayConfig({ config, isEditMode }: CameraOverlayConfigP
         <span className="absolute right-1 bottom-1 rounded-sm bg-white/90 px-1 text-[9px] font-bold text-[#2d5eff] shadow-sm">ROI</span>
       </div>
 
-      <div className={`absolute h-0.5 w-full shadow-[0_0_8px_rgba(255,210,0,0.8)] ${isEditMode ? "bg-yellow-400" : "bg-yellow-400/80"}`} style={{ top: `${config.tripwire}%` }}>
-        <div className="absolute -top-6 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-sm bg-yellow-400 px-2 py-0.5 text-[10px] font-bold text-black shadow-md">
+      <div className={`absolute h-full w-0.5 shadow-[0_0_8px_rgba(255,210,0,0.8)] ${isEditMode ? "bg-yellow-400" : "bg-yellow-400/80"}`} style={{ left: `${config.tripwire}%` }}>
+        <div className="absolute top-3 left-1/2 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-sm bg-yellow-400 px-2 py-0.5 text-[10px] font-bold text-black shadow-md">
           {config.reverse ? (
             <>
-              EXIT <span className="text-sm font-black">↓</span> ENTRY <span className="text-sm font-black">↑</span>
+              ENTRY <span className="text-sm font-black">←</span> EXIT <span className="text-sm font-black">→</span>
             </>
           ) : (
             <>
-              ENTRY <span className="text-sm font-black">↓</span> EXIT <span className="text-sm font-black">↑</span>
+              EXIT <span className="text-sm font-black">←</span> ENTRY <span className="text-sm font-black">→</span>
             </>
           )}
         </div>

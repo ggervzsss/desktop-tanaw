@@ -1,5 +1,5 @@
 import React from "react";
-import { Maximize, Move } from "lucide-react";
+import { Maximize, Move, Video } from "lucide-react";
 import type { Camera } from "../../../types/enterprise";
 
 type CameraEditControlsProps = {
@@ -17,6 +17,66 @@ const roiFields = [
 export function CameraEditControls({ editForm, onEditFormChange }: CameraEditControlsProps) {
   return (
     <div className="grid grid-cols-1 gap-6 rounded-sm border border-gray-200 bg-white p-4 shadow-inner md:grid-cols-2">
+      <div className="md:col-span-2">
+        <h4 className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-2 text-xs font-bold tracking-wider text-[#111827] uppercase">
+          <Video size={14} className="text-[#065f46]" /> Camera Stream
+        </h4>
+        <div className="grid gap-4 lg:grid-cols-[1fr_180px_140px]">
+          <div>
+            <label className="mb-1 block text-[10px] font-bold text-gray-500 uppercase">Stream URL</label>
+            <input
+              type="text"
+              value={editForm.rtsp}
+              onChange={(event) => onEditFormChange({ ...editForm, rtsp: event.target.value })}
+              className="w-full rounded-sm border border-gray-300 p-2 font-mono text-sm text-gray-800 outline-none transition focus:border-[#065f46]"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-[10px] font-bold text-gray-500 uppercase">Camera Type</label>
+            <select
+              value={editForm.cameraType}
+              onChange={(event) => onEditFormChange({ ...editForm, cameraType: event.target.value as Camera["cameraType"] })}
+              className="w-full rounded-sm border border-gray-300 p-2 text-sm font-semibold text-gray-800 outline-none transition focus:border-[#065f46]"
+            >
+              <option value="IP_WEBCAM">IP Webcam</option>
+              <option value="RTSP_CCTV">RTSP CCTV</option>
+              <option value="USB_WEBCAM">USB Webcam</option>
+              <option value="ONVIF_CCTV">ONVIF CCTV</option>
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-[10px] font-bold text-gray-500 uppercase">Confidence</label>
+            <input
+              type="number"
+              min="0.05"
+              max="0.95"
+              step="0.05"
+              value={editForm.confidence}
+              onChange={(event) => onEditFormChange({ ...editForm, confidence: Number(event.target.value) })}
+              className="w-full rounded-sm border border-gray-300 p-2 text-sm font-semibold text-gray-800 outline-none transition focus:border-[#065f46]"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-[10px] font-bold text-gray-500 uppercase">Username</label>
+            <input
+              type="text"
+              value={editForm.username ?? ""}
+              onChange={(event) => onEditFormChange({ ...editForm, username: event.target.value })}
+              className="w-full rounded-sm border border-gray-300 p-2 text-sm text-gray-800 outline-none transition focus:border-[#065f46]"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-[10px] font-bold text-gray-500 uppercase">Password</label>
+            <input
+              type="password"
+              value={editForm.password ?? ""}
+              onChange={(event) => onEditFormChange({ ...editForm, password: event.target.value })}
+              className="w-full rounded-sm border border-gray-300 p-2 text-sm text-gray-800 outline-none transition focus:border-[#065f46]"
+            />
+          </div>
+        </div>
+      </div>
+
       <div>
         <h4 className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-2 text-xs font-bold tracking-wider text-[#111827] uppercase">
           <Move size={14} className="text-[#065f46]" /> Tripwire Config
@@ -24,7 +84,7 @@ export function CameraEditControls({ editForm, onEditFormChange }: CameraEditCon
         <div className="space-y-4">
           <div>
             <label className="mb-2 flex justify-between text-xs font-semibold text-gray-600">
-              <span>Y-Axis Position</span> <span className="font-mono text-[#065f46]">{editForm.config.tripwire}%</span>
+              <span>X-Axis Position</span> <span className="font-mono text-[#065f46]">{editForm.config.tripwire}%</span>
             </label>
             <input
               type="range"
@@ -41,7 +101,7 @@ export function CameraEditControls({ editForm, onEditFormChange }: CameraEditCon
               onClick={() => onEditFormChange({ ...editForm, config: { ...editForm.config, reverse: !editForm.config.reverse } })}
               className={`rounded-sm px-3 py-1 text-xs font-bold transition-colors ${editForm.config.reverse ? "bg-[#111827] text-white" : "bg-gray-200 text-gray-700 hover:bg-gray-300"}`}
             >
-              {editForm.config.reverse ? "Swapped (Out/In)" : "Default (In/Out)"}
+              {editForm.config.reverse ? "Right-to-left Entry" : "Left-to-right Entry"}
             </button>
           </div>
         </div>

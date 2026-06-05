@@ -3,25 +3,67 @@ import { Edit2, Save, Trash2 } from "lucide-react";
 import { Card } from "../../../components/Card";
 import type { Camera } from "../../../types/enterprise";
 import { CameraEditControls } from "./CameraEditControls";
+import { CameraMonitoringPanel } from "./CameraMonitoringPanel";
 import { CameraReadOnlyDetails } from "./CameraReadOnlyDetails";
 import { CameraValidationWarnings } from "./CameraValidationWarnings";
 import { CameraVideoPreview } from "./CameraVideoPreview";
 import { NoCameraSelected } from "./NoCameraSelected";
+import type { MlCounts, MlHealth, MlServiceStatus } from "../services/ml-service";
 
 type CameraPreviewPanelProps = {
   activeCam?: Camera;
+  counts: MlCounts;
   editForm: Camera | null;
+  error: string | null;
+  health: MlHealth | null;
+  isRestartingService: boolean;
   isEditMode: boolean;
+  isStarting: boolean;
+  isStopping: boolean;
+  isTesting: boolean;
+  processingCameraId: number | null;
+  serviceStatus: MlServiceStatus | null;
+  streamUrl: string;
   warnings: string[];
   onCancelEdit: () => void;
   onDelete: () => void;
   onEdit: () => void;
+  onRestartService: () => void;
   onSave: () => void;
+  onStartProcessing: () => void;
+  onStopProcessing: () => void;
+  onTestConnection: () => void;
   onEditFormChange: React.Dispatch<React.SetStateAction<Camera | null>>;
 };
 
-export function CameraPreviewPanel({ activeCam, editForm, isEditMode, warnings, onCancelEdit, onDelete, onEdit, onSave, onEditFormChange }: CameraPreviewPanelProps) {
+export function CameraPreviewPanel({
+  activeCam,
+  counts,
+  editForm,
+  error,
+  health,
+  isRestartingService,
+  isEditMode,
+  isStarting,
+  isStopping,
+  isTesting,
+  processingCameraId,
+  serviceStatus,
+  streamUrl,
+  warnings,
+  onCancelEdit,
+  onDelete,
+  onEdit,
+  onRestartService,
+  onSave,
+  onStartProcessing,
+  onStopProcessing,
+  onTestConnection,
+  onEditFormChange,
+}: CameraPreviewPanelProps) {
   if (!activeCam) return <NoCameraSelected />;
+
+  const isProcessing = processingCameraId === activeCam.id && counts.running;
 
   return (
     <Card className="flex h-full flex-col overflow-hidden rounded-sm shadow-md">
@@ -57,7 +99,23 @@ export function CameraPreviewPanel({ activeCam, editForm, isEditMode, warnings, 
       </div>
 
       <div className="flex flex-1 flex-col bg-gray-50 p-5">
-        <CameraVideoPreview activeCam={activeCam} editForm={editForm} isEditMode={isEditMode} />
+        <CameraMonitoringPanel
+          activeCam={activeCam}
+          counts={counts}
+          error={error}
+          health={health}
+          isRestartingService={isRestartingService}
+          isStarting={isStarting}
+          isStopping={isStopping}
+          isTesting={isTesting}
+          processingCameraId={processingCameraId}
+          serviceStatus={serviceStatus}
+          onRestartService={onRestartService}
+          onStartProcessing={onStartProcessing}
+          onStopProcessing={onStopProcessing}
+          onTestConnection={onTestConnection}
+        />
+        <CameraVideoPreview activeCam={activeCam} editForm={editForm} isProcessing={isProcessing} isEditMode={isEditMode} streamUrl={streamUrl} />
         <CameraValidationWarnings warnings={warnings} />
         {isEditMode && editForm ? <CameraEditControls editForm={editForm} onEditFormChange={onEditFormChange} /> : <CameraReadOnlyDetails activeCam={activeCam} />}
       </div>
