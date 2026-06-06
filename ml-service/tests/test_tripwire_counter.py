@@ -50,7 +50,7 @@ class TripwireCounterTest(unittest.TestCase):
         self.assertEqual(counter.counts.entry, 1)
         self.assertEqual(counter.counts.exit, 0)
 
-    def test_paired_custom_lines_count_entry_from_crossing_order(self) -> None:
+    def test_paired_custom_lines_count_exit_when_moving_from_entry_side_to_exit_side(self) -> None:
         counter = TripwireCounter(
             entry_line=((0.35, 0.0), (0.35, 1.0)),
             exit_line=((0.65, 0.0), (0.65, 1.0)),
@@ -59,13 +59,13 @@ class TripwireCounterTest(unittest.TestCase):
 
         self._update(counter, 1, 50, 80)
         self._update(counter, 1, 90, 80)
-        self._update(counter, 1, 150, 80, expected="entry")
+        self._update(counter, 1, 150, 80, expected="exit")
 
-        self.assertEqual(counter.counts.entry, 1)
-        self.assertEqual(counter.counts.exit, 0)
-        self.assertEqual(counter.counts.occupancy, 1)
+        self.assertEqual(counter.counts.entry, 0)
+        self.assertEqual(counter.counts.exit, 1)
+        self.assertEqual(counter.counts.occupancy, 0)
 
-    def test_paired_custom_lines_count_exit_from_reverse_crossing_order(self) -> None:
+    def test_paired_custom_lines_count_entry_when_moving_from_exit_side_to_entry_side(self) -> None:
         counter = TripwireCounter(
             entry_line=((0.35, 0.0), (0.35, 1.0)),
             exit_line=((0.65, 0.0), (0.65, 1.0)),
@@ -74,11 +74,11 @@ class TripwireCounterTest(unittest.TestCase):
 
         self._update(counter, 2, 150, 80)
         self._update(counter, 2, 120, 80)
-        self._update(counter, 2, 50, 80, expected="exit")
+        self._update(counter, 2, 50, 80, expected="entry")
 
-        self.assertEqual(counter.counts.entry, 0)
-        self.assertEqual(counter.counts.exit, 1)
-        self.assertEqual(counter.counts.occupancy, 0)
+        self.assertEqual(counter.counts.entry, 1)
+        self.assertEqual(counter.counts.exit, 0)
+        self.assertEqual(counter.counts.occupancy, 1)
 
     def test_stale_track_can_count_again_after_ttl(self) -> None:
         counter = TripwireCounter(tripwire_position=0.5, track_ttl_frames=2)

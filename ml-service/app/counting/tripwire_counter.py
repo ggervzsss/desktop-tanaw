@@ -166,7 +166,7 @@ class TripwireCounter:
             state.pending_frame = self.frame_index
             return None
 
-        direction = state.pending_line
+        direction = crossed_line
         state.pending_line = None
         state.pending_frame = 0
         return direction
