@@ -42,10 +42,18 @@ class DisplayTrack:
     direction: str | None = None
 
 
+@dataclass(frozen=True)
+class ProcessingSession:
+    session_id: int
+    config: CameraStartRequest
+    stop_event: threading.Event
+
+
 class CameraProcessingManager:
     def __init__(self) -> None:
         self._lock = threading.RLock()
-        self._stop_event = threading.Event()
+        self._active_session: ProcessingSession | None = None
+        self._next_session_id = 0
         self._processing_thread: threading.Thread | None = None
         self._reader_thread: threading.Thread | None = None
         self._stream_thread: threading.Thread | None = None
@@ -113,18 +121,20 @@ class CameraProcessingManager:
             raise RuntimeError(safe_message) from exc
 
         with self._lock:
+            self._next_session_id += 1
+            session = ProcessingSession(session_id=self._next_session_id, config=config, stop_event=threading.Event())
+            self._active_session = session
             self._config = config
             self._latest_jpeg = self._build_status_frame("Starting camera processing...")
             self._latest_stream_jpeg = self._latest_jpeg
             self._latest_stream_frame_id = 0
             self._state = RuntimeState(running=True, status="running", error=None)
-            self._stop_event.clear()
             self._latest_raw_frame = None
             self._latest_raw_frame_id = 0
             self._latest_tracks = []
-            self._reader_thread = threading.Thread(target=self._capture_loop, name="tanaw-camera-reader", daemon=True)
-            self._processing_thread = threading.Thread(target=self._processing_loop, name="tanaw-camera-processing", daemon=True)
-            self._stream_thread = threading.Thread(target=self._stream_encoding_loop, name="tanaw-camera-stream-encoder", daemon=True)
+            self._reader_thread = threading.Thread(target=self._capture_loop, args=(session,), name="tanaw-camera-reader", daemon=True)
+            self._processing_thread = threading.Thread(target=self._processing_loop, args=(session,), name="tanaw-camera-processing", daemon=True)
+            self._stream_thread = threading.Thread(target=self._stream_encoding_loop, args=(session,), name="tanaw-camera-stream-encoder", daemon=True)
             self._reader_thread.start()
             self._processing_thread.start()
             self._stream_thread.start()
@@ -133,8 +143,11 @@ class CameraProcessingManager:
     def stop(self) -> None:
         threads: list[threading.Thread]
         with self._lock:
+            session = self._active_session
             threads = [thread for thread in (self._reader_thread, self._processing_thread, self._stream_thread) if thread is not None]
-            self._stop_event.set()
+            if session is not None:
+                session.stop_event.set()
+            self._active_session = None
             self._raw_frame_condition.notify_all()
 
         for thread in threads:
@@ -271,22 +284,21 @@ class CameraProcessingManager:
 
         return self._build_status_frame("No camera stream available."), last_frame_id
 
-    def _capture_loop(self) -> None:
-        config = self._config
-        if config is None:
-            self._set_error("Camera configuration is missing.")
+    def _capture_loop(self, session: ProcessingSession) -> None:
+        config = session.config
+        if not self._is_current_session(session):
             return
 
         runtime_stream_url = self._runtime_stream_url(config)
         snapshot_url = build_ip_webcam_snapshot_url(runtime_stream_url) if config.camera_type == "IP_WEBCAM" else None
         if snapshot_url is not None:
-            self._ip_webcam_snapshot_capture_loop(config, snapshot_url)
+            self._ip_webcam_snapshot_capture_loop(session, snapshot_url)
             return
 
         if is_mjpeg_http_stream(runtime_stream_url):
-            self._mjpeg_capture_loop(config, runtime_stream_url)
+            self._mjpeg_capture_loop(session, runtime_stream_url)
         else:
-            self._opencv_capture_loop(config, runtime_stream_url)
+            self._opencv_capture_loop(session, runtime_stream_url)
 
     def _validate_config_stream(self, config: CameraStartRequest) -> tuple[bool, str]:
         runtime_stream_url = self._runtime_stream_url(config)
@@ -301,13 +313,14 @@ class CameraProcessingManager:
     def _runtime_stream_url(self, config: CameraStartRequest) -> str:
         return build_authenticated_stream_url(config.stream_url, config.username, config.password)
 
-    def _ip_webcam_snapshot_capture_loop(self, config: CameraStartRequest, snapshot_url: str) -> None:
+    def _ip_webcam_snapshot_capture_loop(self, session: ProcessingSession, snapshot_url: str) -> None:
+        config = session.config
         failed_reads = 0
         last_error = "Camera snapshot endpoint stopped returning frames."
         frame_interval = 1.0 / max(config.processing_fps, 1.0)
 
         try:
-            while not self._stop_event.is_set():
+            while not session.stop_event.is_set() and self._is_current_session(session):
                 started_at = time.monotonic()
 
                 try:
@@ -319,84 +332,87 @@ class CameraProcessingManager:
                 if frame is None:
                     failed_reads += 1
                     if failed_reads >= 30:
-                        self._set_error(redact_stream_credentials(f"Camera snapshot endpoint stopped returning frames: {last_error}"))
+                        self._set_session_error(session, redact_stream_credentials(f"Camera snapshot endpoint stopped returning frames: {last_error}"))
                         return
                 else:
                     failed_reads = 0
                     frame = self._resize_for_processing(frame, config.max_frame_width)
-                    self._publish_raw_frame(frame)
+                    self._publish_raw_frame(session, frame)
 
                 elapsed = time.monotonic() - started_at
                 remaining = frame_interval - elapsed
                 if remaining > 0:
-                    time.sleep(remaining)
+                    session.stop_event.wait(remaining)
         except Exception as exc:
-            self._set_error(redact_stream_credentials(str(exc)))
+            self._set_session_error(session, redact_stream_credentials(str(exc)))
         finally:
             with self._lock:
-                if not self._stop_event.is_set() and self._state.status != "error":
+                if self._is_current_session_locked(session) and not session.stop_event.is_set() and self._state.status != "error":
                     self._state.status = "stopped"
 
-    def _mjpeg_capture_loop(self, config: CameraStartRequest, stream_url: str) -> None:
+    def _mjpeg_capture_loop(self, session: ProcessingSession, stream_url: str) -> None:
+        config = session.config
         try:
-            for frame in iter_mjpeg_frames(stream_url, self._stop_event):
-                if self._stop_event.is_set():
+            for frame in iter_mjpeg_frames(stream_url, session.stop_event):
+                if session.stop_event.is_set() or not self._is_current_session(session):
                     break
 
                 frame = self._resize_for_processing(frame, config.max_frame_width)
-                self._publish_raw_frame(frame)
+                self._publish_raw_frame(session, frame)
 
-            if not self._stop_event.is_set():
-                self._set_error("Camera stream stopped returning MJPEG frames.")
+            if not session.stop_event.is_set() and self._is_current_session(session):
+                self._set_session_error(session, "Camera stream stopped returning MJPEG frames.")
         except Exception as exc:
-            self._set_error(redact_stream_credentials(str(exc)))
+            self._set_session_error(session, redact_stream_credentials(str(exc)))
         finally:
             with self._lock:
-                if self._state.status != "error":
+                if self._is_current_session_locked(session) and self._state.status != "error":
                     self._state.status = "stopped"
 
-    def _opencv_capture_loop(self, config: CameraStartRequest, stream_url: str) -> None:
+    def _opencv_capture_loop(self, session: ProcessingSession, stream_url: str) -> None:
+        config = session.config
         capture = open_capture(stream_url)
         failed_reads = 0
 
         try:
             if not capture.isOpened():
-                self._set_error("Camera stream could not be opened.")
+                self._set_session_error(session, "Camera stream could not be opened.")
                 return
 
-            while not self._stop_event.is_set():
+            while not session.stop_event.is_set() and self._is_current_session(session):
                 ok, frame = capture.read()
                 if not ok or frame is None:
                     failed_reads += 1
                     if failed_reads >= 90:
-                        self._set_error("Camera stream stopped returning frames.")
+                        self._set_session_error(session, "Camera stream stopped returning frames.")
                         return
-                    time.sleep(0.05)
+                    session.stop_event.wait(0.05)
                     continue
 
                 failed_reads = 0
                 frame = self._resize_for_processing(frame, config.max_frame_width)
-                self._publish_raw_frame(frame)
+                self._publish_raw_frame(session, frame)
         except Exception as exc:
-            self._set_error(redact_stream_credentials(str(exc)))
+            self._set_session_error(session, redact_stream_credentials(str(exc)))
         finally:
             capture.release()
             with self._lock:
-                if self._state.status != "error":
+                if self._is_current_session_locked(session) and self._state.status != "error":
                     self._state.status = "stopped"
 
-    def _publish_raw_frame(self, frame) -> None:
+    def _publish_raw_frame(self, session: ProcessingSession, frame) -> None:
         with self._raw_frame_condition:
+            if not self._is_current_session_locked(session):
+                return
             self._latest_raw_frame = frame
             self._latest_raw_frame_id += 1
             self._state.status = "running"
             self._state.error = None
             self._raw_frame_condition.notify_all()
 
-    def _processing_loop(self) -> None:
-        config = self._config
-        if config is None:
-            self._set_error("Camera configuration is missing.")
+    def _processing_loop(self, session: ProcessingSession) -> None:
+        config = session.config
+        if not self._is_current_session(session):
             return
 
         last_processed_frame_id = 0
@@ -404,16 +420,18 @@ class CameraProcessingManager:
 
         try:
             self._tracker.warmup()
-            while not self._stop_event.is_set():
-                frame, frame_id = self._wait_for_latest_frame(last_processed_frame_id)
+            while not session.stop_event.is_set() and self._is_current_session(session):
+                frame, frame_id = self._wait_for_latest_frame(session, last_processed_frame_id)
                 if frame is None:
                     continue
 
                 started_at = time.monotonic()
-                tracks = self._detect_and_count(frame, config.confidence)
+                tracks = self._detect_and_count(session, frame, config.confidence)
                 last_processed_frame_id = frame_id
 
                 with self._lock:
+                    if not self._is_current_session_locked(session):
+                        return
                     self._latest_tracks = tracks
                     self._state.status = "running"
                     self._state.error = None
@@ -421,27 +439,27 @@ class CameraProcessingManager:
                 elapsed = time.monotonic() - started_at
                 remaining = frame_interval - elapsed
                 if remaining > 0:
-                    time.sleep(remaining)
+                    session.stop_event.wait(remaining)
         except Exception as exc:
-            self._set_error(str(exc))
+            self._set_session_error(session, str(exc))
         finally:
             with self._lock:
-                self._state.running = False
-                if self._state.status != "error":
+                if self._is_current_session_locked(session):
+                    self._state.running = False
+                if self._is_current_session_locked(session) and self._state.status != "error":
                     self._state.status = "stopped"
 
-    def _stream_encoding_loop(self) -> None:
-        config = self._config
-        if config is None:
-            self._set_error("Camera configuration is missing.")
+    def _stream_encoding_loop(self, session: ProcessingSession) -> None:
+        config = session.config
+        if not self._is_current_session(session):
             return
 
         last_encoded_raw_frame_id = 0
         frame_interval = 1.0 / max(config.stream_fps, 1.0)
 
         try:
-            while not self._stop_event.is_set():
-                frame_snapshot = self._next_display_frame_snapshot(last_encoded_raw_frame_id, timeout=1.0)
+            while not session.stop_event.is_set() and self._is_current_session(session):
+                frame_snapshot = self._next_display_frame_snapshot(session, last_encoded_raw_frame_id, timeout=1.0)
                 if frame_snapshot is None:
                     continue
 
@@ -463,6 +481,8 @@ class CameraProcessingManager:
                 encoded = self._encode_frame(display_frame)
 
                 with self._raw_frame_condition:
+                    if not self._is_current_session_locked(session):
+                        return
                     self._latest_stream_jpeg = encoded
                     self._latest_stream_frame_id += 1
                     last_encoded_raw_frame_id = raw_frame_id
@@ -471,18 +491,18 @@ class CameraProcessingManager:
                 elapsed = time.monotonic() - started_at
                 remaining = frame_interval - elapsed
                 if remaining > 0:
-                    time.sleep(remaining)
+                    session.stop_event.wait(remaining)
         except Exception as exc:
-            self._set_error(str(exc))
+            self._set_session_error(session, str(exc))
 
-    def _next_display_frame_snapshot(self, last_encoded_raw_frame_id: int, timeout: float):
+    def _next_display_frame_snapshot(self, session: ProcessingSession, last_encoded_raw_frame_id: int, timeout: float):
         with self._raw_frame_condition:
             self._raw_frame_condition.wait_for(
-                lambda: self._stop_event.is_set() or self._latest_raw_frame_id > last_encoded_raw_frame_id,
+                lambda: session.stop_event.is_set() or not self._is_current_session_locked(session) or self._latest_raw_frame_id > last_encoded_raw_frame_id,
                 timeout=timeout,
             )
 
-            if self._stop_event.is_set() or self._latest_raw_frame is None or self._latest_raw_frame_id <= last_encoded_raw_frame_id:
+            if session.stop_event.is_set() or not self._is_current_session_locked(session) or self._latest_raw_frame is None or self._latest_raw_frame_id <= last_encoded_raw_frame_id:
                 return None
 
             counts = self._counter.counts
@@ -499,28 +519,34 @@ class CameraProcessingManager:
                 counts.occupancy,
             )
 
-    def _wait_for_latest_frame(self, last_processed_frame_id: int):
+    def _wait_for_latest_frame(self, session: ProcessingSession, last_processed_frame_id: int):
         with self._raw_frame_condition:
             self._raw_frame_condition.wait_for(
-                lambda: self._stop_event.is_set() or self._latest_raw_frame_id > last_processed_frame_id,
+                lambda: session.stop_event.is_set() or not self._is_current_session_locked(session) or self._latest_raw_frame_id > last_processed_frame_id,
                 timeout=1.0,
             )
 
-            if self._stop_event.is_set() or self._latest_raw_frame is None:
+            if session.stop_event.is_set() or not self._is_current_session_locked(session) or self._latest_raw_frame is None:
                 return None, last_processed_frame_id
 
             return self._latest_raw_frame.copy(), self._latest_raw_frame_id
 
-    def _detect_and_count(self, frame, confidence: float) -> list[DisplayTrack]:
+    def _detect_and_count(self, session: ProcessingSession, frame, confidence: float) -> list[DisplayTrack]:
         frame_height, frame_width = frame.shape[:2]
         tracks = self._tracker.track_people(frame, confidence)
+        if not self._is_current_session(session):
+            return []
+
         display_tracks: list[DisplayTrack] = []
         self._counter.begin_frame()
 
         for track in tracks:
+            if not self._is_current_session(session):
+                return []
+
             direction = self._counter.update(track.track_id, track.counting_point, frame_width, frame_height) if track.track_id > 0 else None
             if direction is not None:
-                self._persist_count_event(track.track_id, direction)
+                self._persist_count_event(session, track.track_id, direction)
             display_tracks.append(
                 DisplayTrack(
                     track_id=track.track_id,
@@ -608,15 +634,26 @@ class CameraProcessingManager:
             raise RuntimeError("Failed to encode processed frame.")
         return buffer.tobytes()
 
-    def _set_error(self, message: str) -> None:
+    def _is_current_session(self, session: ProcessingSession) -> bool:
+        with self._lock:
+            return self._is_current_session_locked(session)
+
+    def _is_current_session_locked(self, session: ProcessingSession) -> bool:
+        return self._active_session is session
+
+    def _set_session_error(self, session: ProcessingSession, message: str) -> None:
         with self._raw_frame_condition:
+            if not self._is_current_session_locked(session):
+                return
+
             safe_message = redact_stream_credentials(message)
             self._state = RuntimeState(running=False, status="error", error=safe_message)
             self._latest_jpeg = self._build_status_frame(safe_message)
             self._latest_stream_jpeg = self._latest_jpeg
             self._latest_stream_frame_id += 1
+            session.stop_event.set()
+            self._active_session = None
             self._persist_session_locked()
-            self._stop_event.set()
             self._raw_frame_condition.notify_all()
 
     def _build_status_frame(self, message: str) -> bytes:
@@ -627,8 +664,11 @@ class CameraProcessingManager:
         cv2.putText(frame, message[:72], (90, 288), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (203, 213, 225), 2, cv2.LINE_AA)
         return self._encode_frame(frame)
 
-    def _persist_count_event(self, track_id: int, direction: str) -> None:
+    def _persist_count_event(self, session: ProcessingSession, track_id: int, direction: str) -> None:
         with self._lock:
+            if not self._is_current_session_locked(session):
+                return
+
             counts = self._counter.counts.as_dict()
             try:
                 self._session_store.append_event(
