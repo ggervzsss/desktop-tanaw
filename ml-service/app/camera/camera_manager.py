@@ -484,9 +484,10 @@ class CameraProcessingManager:
         frame_height, frame_width = frame.shape[:2]
         tracks = self._tracker.track_people(frame, confidence)
         display_tracks: list[DisplayTrack] = []
+        self._counter.begin_frame()
 
         for track in tracks:
-            direction = self._counter.update(track.track_id, track.centroid, frame_width, frame_height) if track.track_id > 0 else None
+            direction = self._counter.update(track.track_id, track.counting_point, frame_width, frame_height) if track.track_id > 0 else None
             if direction is not None:
                 self._persist_count_event(track.track_id, direction)
             display_tracks.append(
