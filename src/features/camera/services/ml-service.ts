@@ -13,6 +13,7 @@ export type MlHealth = {
   error: string | null;
   model_loaded: boolean;
   model_ready: boolean;
+  model_loading: boolean;
   device: string | null;
   model_path: string | null;
 };

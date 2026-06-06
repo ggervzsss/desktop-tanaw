@@ -23,6 +23,18 @@ class YoloPersonTrackerTest(unittest.TestCase):
             with self.assertRaisesRegex(FileNotFoundError, "YOLO model file was not found"):
                 tracker._resolve_model_path()
 
+    def test_status_does_not_block_when_model_lock_is_held(self) -> None:
+        tracker = YoloPersonTracker()
+
+        tracker._lock.acquire()
+        try:
+            status = tracker.status()
+        finally:
+            tracker._lock.release()
+
+        self.assertTrue(status["model_loading"])
+        self.assertFalse(status["model_loaded"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -71,6 +71,7 @@ class HealthResponse(BaseModel):
     error: str | None = None
     model_loaded: bool = False
     model_ready: bool = False
+    model_loading: bool = False
     device: str | None = None
     model_path: str | None = None
 

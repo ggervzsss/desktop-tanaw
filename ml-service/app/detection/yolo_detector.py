@@ -25,18 +25,31 @@ class YoloPersonTracker:
         self._device = "cpu"
         self._use_half = False
         self._warmed_up = False
+        self._loading = False
         self._resolved_model_path: str | None = None
         self._lock = Lock()
         self._warmup_lock = Lock()
 
     def status(self) -> dict[str, bool | str | None]:
-        with self._lock:
+        if not self._lock.acquire(blocking=False):
             return {
                 "model_loaded": self._model is not None,
                 "model_ready": self._warmed_up,
                 "device": self._device,
                 "model_path": self._resolved_model_path,
+                "model_loading": True,
             }
+
+        try:
+            return {
+                "model_loaded": self._model is not None,
+                "model_ready": self._warmed_up,
+                "device": self._device,
+                "model_path": self._resolved_model_path,
+                "model_loading": self._loading,
+            }
+        finally:
+            self._lock.release()
 
     def _resolve_model_path(self) -> str:
         requested_path = Path(self.model_path)
@@ -64,14 +77,18 @@ class YoloPersonTracker:
             import torch
 
             model_source = self._resolve_model_path()
-            self._model = YOLO(model_source)
-            self._resolved_model_path = model_source
-            self._device = "cuda:0" if torch.cuda.is_available() else "cpu"
-            self._use_half = self._device.startswith("cuda")
             try:
-                self._model.fuse()
-            except Exception:
-                pass
+                self._loading = True
+                self._model = YOLO(model_source)
+                self._resolved_model_path = model_source
+                self._device = "cuda:0" if torch.cuda.is_available() else "cpu"
+                self._use_half = self._device.startswith("cuda")
+                try:
+                    self._model.fuse()
+                except Exception:
+                    pass
+            finally:
+                self._loading = False
             return self._model
 
     def warmup(self) -> None:
