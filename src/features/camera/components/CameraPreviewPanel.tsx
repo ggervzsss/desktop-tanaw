@@ -79,8 +79,12 @@ export function CameraPreviewPanel({
               <button onClick={onCancelEdit} className="rounded-sm border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-600 transition-colors hover:bg-gray-100">
                 Cancel
               </button>
-              <button onClick={onSave} className="flex items-center gap-1.5 rounded-sm bg-[#065f46] px-3 py-1.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-[#044a36]">
-                <Save size={14} /> Save Config
+              <button
+                onClick={onSave}
+                disabled={isStarting}
+                className="flex items-center gap-1.5 rounded-sm bg-[#065f46] px-3 py-1.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-[#044a36] disabled:cursor-not-allowed disabled:bg-gray-400"
+              >
+                <Save size={14} /> {isStarting ? "Applying..." : "Save Config"}
               </button>
             </>
           ) : (

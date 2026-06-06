@@ -214,8 +214,8 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
     setCameraPendingDelete(null);
   };
 
-  const handleSave = () => {
-    if (!editForm) return;
+  const handleSave = async () => {
+    if (!editForm || !activeCam) return;
 
     const rtspError = validateCameraStreamUrl(editForm.rtsp);
     if (rtspError) {
@@ -228,16 +228,41 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
       return;
     }
 
+    const connectionChanged = activeCam.rtsp !== editForm.rtsp || activeCam.cameraType !== editForm.cameraType || activeCam.username !== editForm.username || activeCam.password !== editForm.password;
+    const isProcessingEditedCamera = processingCameraId === editForm.id && counts.running;
+    const savedCamera: Camera = {
+      ...editForm,
+      status: isProcessingEditedCamera ? "running" : connectionChanged ? "untested" : editForm.status,
+    };
+
     setCameras((current) =>
       current.map((camera) => {
-        if (camera.id !== activeCamId) return camera;
-
-        const connectionChanged = camera.rtsp !== editForm.rtsp || camera.cameraType !== editForm.cameraType || camera.username !== editForm.username || camera.password !== editForm.password;
-        return { ...editForm, status: connectionChanged ? "untested" : editForm.status };
+        return camera.id === activeCamId ? savedCamera : camera;
       }),
     );
     setMonitoringError(null);
-    setIsEditMode(false);
+
+    if (!isProcessingEditedCamera) {
+      setIsEditMode(false);
+      return;
+    }
+
+    setIsStarting(true);
+    try {
+      await startCameraProcessing(mlBaseUrl, savedCamera);
+      setProcessingCameraId(savedCamera.id);
+      setCounts({ ...EMPTY_ML_COUNTS, running: true, status: "running" });
+      setDetections(EMPTY_ML_DETECTIONS);
+      setStreamVersion((current) => current + 1);
+      await refreshMlStatus();
+      await refreshCounts();
+      setIsEditMode(false);
+    } catch (error) {
+      updateCameraStatus(savedCamera.id, "error");
+      setMonitoringError(toErrorMessage(error));
+    } finally {
+      setIsStarting(false);
+    }
   };
 
   const handleAddCamera = (event: React.FormEvent<HTMLFormElement>) => {

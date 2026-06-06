@@ -25,6 +25,7 @@ export function CameraVideoPreview({ activeCam, detections, editForm, isProcessi
   const [contentRect, setContentRect] = useState<ContentRect | null>(null);
   const streamIsAvailable = isProcessing && streamUrl;
   const overlayConfig = isEditMode && editForm ? editForm.config : activeCam.config;
+  const shouldShowConfigOverlay = isEditMode || !streamIsAvailable;
   const frameWidth = detections.frame_width ?? 0;
   const frameHeight = detections.frame_height ?? 0;
 
@@ -69,22 +70,24 @@ export function CameraVideoPreview({ activeCam, detections, editForm, isProcessi
       )}
       {!streamIsAvailable && <div className="absolute inset-0 bg-black/30"></div>}
 
-      <div
-        className="absolute"
-        style={contentRect ? { height: contentRect.height, left: contentRect.left, top: contentRect.top, width: contentRect.width } : { inset: 0 }}
-      >
-        <CameraOverlayConfig
-          config={overlayConfig}
-          isEditMode={isEditMode}
-          onConfigChange={
-            isEditMode
-              ? (config) => {
-                  onEditFormChange((current) => (current ? { ...current, config } : current));
-                }
-              : undefined
-          }
-        />
-      </div>
+      {shouldShowConfigOverlay && (
+        <div
+          className="absolute"
+          style={contentRect ? { height: contentRect.height, left: contentRect.left, top: contentRect.top, width: contentRect.width } : { inset: 0 }}
+        >
+          <CameraOverlayConfig
+            config={overlayConfig}
+            isEditMode={isEditMode}
+            onConfigChange={
+              isEditMode
+                ? (config) => {
+                    onEditFormChange((current) => (current ? { ...current, config } : current));
+                  }
+                : undefined
+            }
+          />
+        </div>
+      )}
       {streamIsAvailable && contentRect && frameWidth > 0 && frameHeight > 0 && (
         <div className="pointer-events-none absolute" style={{ height: contentRect.height, left: contentRect.left, top: contentRect.top, width: contentRect.width }}>
           {detections.tracks.map((track) => {
