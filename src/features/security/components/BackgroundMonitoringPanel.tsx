@@ -10,11 +10,14 @@ type BackgroundMonitoringPanelProps = {
 
 export function BackgroundMonitoringPanel({ isElectron, isLoading, openAtLogin, onToggleStartup }: BackgroundMonitoringPanelProps) {
   return (
-    <Card className="p-6">
-      <h3 className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-2 text-sm font-bold tracking-wider text-[#111827] uppercase">
-        <Power size={16} className="text-[#065f46]" /> Background Monitoring
+    <Card className="rounded-[28px] border-emerald-100/80 p-6 shadow-[0_18px_44px_rgba(15,23,42,0.07)]">
+      <h3 className="mb-4 flex items-center gap-2 border-b border-emerald-100 pb-3 text-sm font-bold tracking-wider text-[#111827] uppercase">
+        <span className="flex h-8 w-8 items-center justify-center rounded-2xl bg-emerald-50 text-[#065f46]">
+          <Power size={16} />
+        </span>
+        Background Monitoring
       </h3>
-      <div className="flex items-center justify-between gap-4 rounded-sm border border-gray-200 bg-gray-50 p-3">
+      <div className="flex items-center justify-between gap-4 rounded-2xl border border-gray-200 bg-gray-50/80 p-4">
         <div>
           <p className="text-sm font-bold text-[#111827]">Start at sign-in</p>
           <p className="mt-1 text-xs font-medium text-gray-500">Launch TANAW in the tray and resume active monitoring sessions.</p>

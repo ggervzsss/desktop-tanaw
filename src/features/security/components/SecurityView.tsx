@@ -92,19 +92,20 @@ export function SecurityView({ theme, setTheme }: SecurityViewProps) {
   };
 
   return (
-    <div className="animate-in fade-in max-w-6xl space-y-6 font-['Inter'] duration-500">
-      <div>
+    <div className="animate-in fade-in mx-auto w-full max-w-[1160px] space-y-6 pt-2 font-['Inter'] duration-500">
+      <div className="mx-auto w-full">
+        <p className="mb-2 text-[11px] font-black tracking-[0.24em] text-[#b7952b] uppercase">Enterprise Controls</p>
         <h2 className="text-2xl font-bold tracking-tight text-[#111827]">Security & Data Control</h2>
-        <p className="mt-1 text-sm text-gray-500">Manage credentials, active sessions, and system-wide preferences.</p>
+        <p className="mt-1 max-w-2xl text-sm leading-relaxed text-gray-500">Manage credentials, active sessions, and system-wide preferences.</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
+      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1.12fr)_minmax(340px,0.88fr)]">
+        <div className="space-y-6">
           <CredentialControl isLoading={isPasswordLoading} isSuccess={isPasswordSuccess} onSubmit={handlePasswordUpdate} />
           <ActiveSessionsPanel />
         </div>
 
-        <div className="space-y-6 lg:col-span-1">
+        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-1">
           <EnhancedProtectionPanel />
           <BackgroundMonitoringPanel isElectron={Boolean(window.tanawAppLifecycle)} isLoading={isStartupLoading} openAtLogin={openAtLogin} onToggleStartup={handleStartupToggle} />
           <ThemePreferencePanel theme={theme} setTheme={setTheme} />
