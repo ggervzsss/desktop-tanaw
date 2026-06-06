@@ -13,6 +13,7 @@ export function SystemLockedMetrics({ metrics, prevMetrics, uniqueTrend }: Syste
       <p className="mb-3 text-[10px] font-bold tracking-widest text-gray-500 uppercase">System Locked Metrics</p>
       <div className="space-y-3">
         <MetricRow label="Total Entries" value={metrics.entries.toLocaleString()} />
+        <MetricRow label="Total Exits" value={metrics.exits.toLocaleString()} />
         <MetricRow label="Peak Occupancy" value={metrics.peak.toLocaleString()} />
         <div className="flex items-center justify-between border-t border-gray-200 pt-3 text-sm">
           <span className="font-semibold text-[#065f46]">Est. Unique Count</span>

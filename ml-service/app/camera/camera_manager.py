@@ -180,6 +180,12 @@ class CameraProcessingManager:
                 "updated_at": self._session_updated_at,
             }
 
+    def metrics_summary(self, include_submitted: bool = False) -> dict:
+        return self._session_store.metrics_summary(include_submitted=include_submitted)
+
+    def record_report_submission(self, report_id: str, period: str, notes: str | None = None, payload: dict | None = None) -> dict:
+        return self._session_store.record_report_submission(report_id=report_id, period=period, notes=notes, payload=payload)
+
     def restore_last_session(self) -> bool:
         if self.running or self._restoring_session:
             return False
@@ -373,6 +379,7 @@ class CameraProcessingManager:
         frame_interval = 1.0 / max(config.processing_fps, 1.0)
 
         try:
+            self._tracker.warmup()
             while not self._stop_event.is_set():
                 frame, frame_id = self._wait_for_latest_frame(last_processed_frame_id)
                 if frame is None:

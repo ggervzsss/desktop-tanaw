@@ -7,7 +7,18 @@ from fastapi.responses import StreamingResponse
 
 from app.camera.auth import redact_stream_credentials
 from app.camera.camera_manager import CameraProcessingManager
-from app.config.camera_config import CameraStartRequest, CameraTestRequest, CameraTestResponse, CountResponse, DetectionResponse, HealthResponse, SessionResponse
+from app.config.camera_config import (
+    CameraStartRequest,
+    CameraTestRequest,
+    CameraTestResponse,
+    CountResponse,
+    DetectionResponse,
+    HealthResponse,
+    MetricsSummaryResponse,
+    ReportSubmissionRequest,
+    ReportSubmissionResponse,
+    SessionResponse,
+)
 
 
 manager = CameraProcessingManager()
@@ -65,6 +76,16 @@ def counts() -> CountResponse:
 @app.get("/session", response_model=SessionResponse)
 def session() -> SessionResponse:
     return SessionResponse(**manager.session())
+
+
+@app.get("/metrics/summary", response_model=MetricsSummaryResponse)
+def metrics_summary(include_submitted: bool = False) -> MetricsSummaryResponse:
+    return MetricsSummaryResponse(**manager.metrics_summary(include_submitted=include_submitted))
+
+
+@app.post("/reports/local-submit", response_model=ReportSubmissionResponse)
+def record_local_report_submission(payload: ReportSubmissionRequest) -> ReportSubmissionResponse:
+    return ReportSubmissionResponse(**manager.record_report_submission(payload.report_id, payload.period, payload.notes, payload.payload))
 
 
 @app.post("/session/restore", response_model=SessionResponse)

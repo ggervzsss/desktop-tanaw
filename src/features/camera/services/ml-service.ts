@@ -51,6 +51,25 @@ export type MlSession = {
   updated_at: string | null;
 };
 
+export type LocalMetricsSummary = {
+  entries: number;
+  exits: number;
+  peak_occupancy: number;
+  current_occupancy: number;
+  unique_count: number;
+  total_events: number;
+  unsubmitted_events: number;
+  unsynced_events: number;
+  first_event_at: string | null;
+  last_event_at: string | null;
+};
+
+export type LocalReportSubmission = LocalMetricsSummary & {
+  report_id: string;
+  submitted_at: string;
+  sync_status: string;
+};
+
 export type CameraTestResult = {
   ok: boolean;
   message: string;
@@ -111,6 +130,26 @@ export async function getMlSession(baseUrl: string): Promise<MlSession> {
 
 export async function restoreMlSession(baseUrl: string): Promise<MlSession> {
   return requestJson<MlSession>(`${baseUrl}/session/restore`, { method: "POST" }, 8000);
+}
+
+export async function getLocalMetricsSummary(baseUrl: string): Promise<LocalMetricsSummary> {
+  return requestJson<LocalMetricsSummary>(`${baseUrl}/metrics/summary`, { method: "GET" }, 2500);
+}
+
+export async function recordLocalReportSubmission(baseUrl: string, payload: { reportId: string; period: string; notes: string; reportPayload: Record<string, unknown> }): Promise<LocalReportSubmission> {
+  return requestJson<LocalReportSubmission>(
+    `${baseUrl}/reports/local-submit`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        notes: payload.notes || null,
+        payload: payload.reportPayload,
+        period: payload.period,
+        report_id: payload.reportId,
+      }),
+    },
+    5000,
+  );
 }
 
 export async function getMlDetections(baseUrl: string): Promise<MlDetections> {

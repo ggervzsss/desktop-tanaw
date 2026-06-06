@@ -3,6 +3,7 @@ import type { TrendFilter } from "../features/dashboard/types/dashboard";
 
 export const EMPTY_METRICS: Metrics = {
   entries: 0,
+  exits: 0,
   peak: 0,
   unique: 0,
 };

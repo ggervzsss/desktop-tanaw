@@ -2,6 +2,7 @@ export type SystemLogPeriod = "Current Period";
 
 export type Metrics = {
   entries: number;
+  exits: number;
   peak: number;
   unique: number;
 };
@@ -26,6 +27,7 @@ export type ReportRecord = {
   date: string;
   status: string;
   entries: number;
+  exits?: number;
   unique: number;
   period?: SystemLogPeriod;
   demo?: DemoBreakdown;

@@ -107,3 +107,29 @@ class SessionResponse(BaseModel):
     camera_config: dict | None = None
     counts: CountResponse
     updated_at: str | None = None
+
+
+class MetricsSummaryResponse(BaseModel):
+    entries: int
+    exits: int
+    peak_occupancy: int
+    current_occupancy: int
+    unique_count: int
+    total_events: int
+    unsubmitted_events: int
+    unsynced_events: int
+    first_event_at: str | None = None
+    last_event_at: str | None = None
+
+
+class ReportSubmissionRequest(BaseModel):
+    report_id: str = Field(..., min_length=3, max_length=80)
+    period: str = Field(default="Current Period", min_length=1, max_length=120)
+    notes: str | None = Field(default=None, max_length=5000)
+    payload: dict | None = None
+
+
+class ReportSubmissionResponse(MetricsSummaryResponse):
+    report_id: str
+    submitted_at: str
+    sync_status: str

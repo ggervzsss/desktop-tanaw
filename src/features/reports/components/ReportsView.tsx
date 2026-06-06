@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import { DotFormModal } from "./DotFormModal";
 import { ReportDraftPanel } from "./ReportDraftPanel";
@@ -6,6 +6,7 @@ import { ReportLedgerTable } from "./ReportLedgerTable";
 import { SubmitReportDialog } from "./SubmitReportDialog";
 import { EMPTY_METRICS, REPORTING_PERIODS } from "../../../lib/operationalDefaults";
 import type { DemoBreakdown, ReportRecord, SystemLogPeriod } from "../../../types/enterprise";
+import { DEFAULT_ML_SERVICE_BASE_URL, getLocalMetricsSummary, getMlServiceStatus, recordLocalReportSubmission } from "../../camera/services/ml-service";
 
 type ReportsViewProps = {
   reportsHistory: ReportRecord[];
@@ -27,11 +28,13 @@ export function ReportsView({ reportsHistory, setReportsHistory }: ReportsViewPr
 
   const [showPreview, setShowPreview] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [metrics, setMetrics] = useState(EMPTY_METRICS);
+  const [metricsError, setMetricsError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const activeReport = activeReportId ? (reportsHistory.find((r) => r.id === activeReportId) ?? null) : null;
   const isReadOnly = activeReport ? !["Draft", "Returned for Revision"].includes(activeReport.status) : false;
 
-  const metrics = EMPTY_METRICS;
   const periodKeys = [...REPORTING_PERIODS];
   const currIndex = periodKeys.indexOf(period);
   const prevPeriod = currIndex < periodKeys.length - 1 ? periodKeys[currIndex + 1] : null;
@@ -39,6 +42,28 @@ export function ReportsView({ reportsHistory, setReportsHistory }: ReportsViewPr
   const uniqueTrend = prevMetrics ? Math.round(((metrics.unique - prevMetrics.unique) / prevMetrics.unique) * 100) : 0;
 
   const isError = metrics.peak > metrics.entries;
+
+  const refreshLocalMetrics = useCallback(async () => {
+    try {
+      const status = await getMlServiceStatus();
+      const summary = await getLocalMetricsSummary(status.baseUrl || DEFAULT_ML_SERVICE_BASE_URL);
+      setMetrics({
+        entries: summary.entries,
+        exits: summary.exits,
+        peak: summary.peak_occupancy,
+        unique: summary.unique_count,
+      });
+      setMetricsError(null);
+    } catch (error) {
+      setMetricsError(error instanceof Error ? error.message : "Unable to load local edge metrics.");
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshLocalMetrics();
+    const intervalId = window.setInterval(() => void refreshLocalMetrics(), 5000);
+    return () => window.clearInterval(intervalId);
+  }, [refreshLocalMetrics]);
 
   const handleGenerateNew = () => {
     setActiveReportId(null);
@@ -70,7 +95,8 @@ export function ReportsView({ reportsHistory, setReportsHistory }: ReportsViewPr
     );
   };
 
-  const executeSubmit = () => {
+  const executeSubmit = async () => {
+    setIsSubmitting(true);
     const now = new Date().toLocaleString("en-US", {
       hour12: true,
       hour: "numeric",
@@ -82,6 +108,28 @@ export function ReportsView({ reportsHistory, setReportsHistory }: ReportsViewPr
       year: "numeric",
     });
 
+    const reportId = activeReportId ?? `REP-${new Date().getTime().toString().slice(-6)}`;
+    const reportPayload = {
+      demo,
+      metrics,
+      notes,
+      period,
+    };
+
+    try {
+      const status = await getMlServiceStatus();
+      await recordLocalReportSubmission(status.baseUrl || DEFAULT_ML_SERVICE_BASE_URL, {
+        notes,
+        period,
+        reportId,
+        reportPayload,
+      });
+    } catch (error) {
+      setMetricsError(error instanceof Error ? error.message : "Unable to save report submission locally.");
+      setIsSubmitting(false);
+      return;
+    }
+
     if (activeReportId) {
       setReportsHistory((prev) =>
         prev.map((r) => {
@@ -89,6 +137,9 @@ export function ReportsView({ reportsHistory, setReportsHistory }: ReportsViewPr
             return {
               ...r,
               status: "Resubmitted",
+              entries: metrics.entries,
+              exits: metrics.exits,
+              unique: metrics.unique,
               period,
               demo,
               notes,
@@ -107,10 +158,11 @@ export function ReportsView({ reportsHistory, setReportsHistory }: ReportsViewPr
       );
     } else {
       const newReport = {
-        id: `REP-${new Date().getTime().toString().slice(-6)}`,
+        id: reportId,
         date: period,
         status: "Submitted",
         entries: metrics.entries,
+        exits: metrics.exits,
         unique: metrics.unique,
         period,
         demo,
@@ -132,6 +184,8 @@ export function ReportsView({ reportsHistory, setReportsHistory }: ReportsViewPr
       setReportsHistory([newReport, ...reportsHistory]);
     }
     setShowConfirm(false);
+    setIsSubmitting(false);
+    void refreshLocalMetrics();
     handleGenerateNew();
   };
 
@@ -139,12 +193,13 @@ export function ReportsView({ reportsHistory, setReportsHistory }: ReportsViewPr
     <div className="animate-in fade-in space-y-6 font-['Inter'] duration-500">
       {showPreview && <DotFormModal onClose={() => setShowPreview(false)} period={period} metrics={metrics} demo={demo} notes={notes} />}
 
-      {showConfirm && <SubmitReportDialog onCancel={() => setShowConfirm(false)} onConfirm={executeSubmit} />}
+      {showConfirm && <SubmitReportDialog isSubmitting={isSubmitting} onCancel={() => setShowConfirm(false)} onConfirm={executeSubmit} />}
 
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-[#111827]">Report Generation & Submission</h2>
           <p className="mt-1 text-sm text-gray-500">Generate LGU-required DOT reports using system-verified metrics.</p>
+          {metricsError && <p className="mt-1 text-xs font-semibold text-red-600">Local metrics unavailable: {metricsError}</p>}
         </div>
         <button
           onClick={handleGenerateNew}
