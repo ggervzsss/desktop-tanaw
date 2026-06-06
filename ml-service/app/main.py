@@ -41,7 +41,12 @@ def restore_active_session() -> None:
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     counts = manager.counts()
-    return HealthResponse(running=bool(counts["running"]), error=counts["error"] if isinstance(counts["error"], str) else None)
+    model_status = manager.model_status()
+    return HealthResponse(
+        running=bool(counts["running"]),
+        error=counts["error"] if isinstance(counts["error"], str) else None,
+        **model_status,
+    )
 
 
 @app.post("/camera/test", response_model=CameraTestResponse)

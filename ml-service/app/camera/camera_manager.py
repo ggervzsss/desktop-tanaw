@@ -93,6 +93,27 @@ class CameraProcessingManager:
                 reverse_direction=config.reverse_direction,
             )
             self._counter.reset()
+            self._latest_jpeg = self._build_status_frame("Initializing ML model...")
+            self._latest_stream_jpeg = self._latest_jpeg
+            self._latest_stream_frame_id += 1
+            self._state = RuntimeState(running=False, status="starting", error=None)
+            self._persist_session_locked()
+
+        try:
+            self._tracker.warmup()
+        except Exception as exc:
+            safe_message = redact_stream_credentials(f"Unable to initialize ML model: {exc}")
+            with self._raw_frame_condition:
+                self._state = RuntimeState(running=False, status="error", error=safe_message)
+                self._latest_jpeg = self._build_status_frame(safe_message)
+                self._latest_stream_jpeg = self._latest_jpeg
+                self._latest_stream_frame_id += 1
+                self._persist_session_locked()
+                self._raw_frame_condition.notify_all()
+            raise RuntimeError(safe_message) from exc
+
+        with self._lock:
+            self._config = config
             self._latest_jpeg = self._build_status_frame("Starting camera processing...")
             self._latest_stream_jpeg = self._latest_jpeg
             self._latest_stream_frame_id = 0
@@ -182,6 +203,9 @@ class CameraProcessingManager:
 
     def metrics_summary(self, include_submitted: bool = False) -> dict:
         return self._session_store.metrics_summary(include_submitted=include_submitted)
+
+    def model_status(self) -> dict[str, bool | str | None]:
+        return self._tracker.status()
 
     def record_report_submission(self, report_id: str, period: str, notes: str | None = None, payload: dict | None = None) -> dict:
         return self._session_store.record_report_submission(report_id=report_id, period=period, notes=notes, payload=payload)

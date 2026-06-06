@@ -11,6 +11,10 @@ export type MlHealth = {
   status: "ok";
   running: boolean;
   error: string | null;
+  model_loaded: boolean;
+  model_ready: boolean;
+  device: string | null;
+  model_path: string | null;
 };
 
 export type MlCounts = {
@@ -194,7 +198,7 @@ export async function startCameraProcessing(baseUrl: string, camera: Camera): Pr
         username: camera.username || null,
       }),
     },
-    12_000,
+    30_000,
   );
 }
 

@@ -25,7 +25,35 @@ class YoloPersonTracker:
         self._device = "cpu"
         self._use_half = False
         self._warmed_up = False
+        self._resolved_model_path: str | None = None
         self._lock = Lock()
+        self._warmup_lock = Lock()
+
+    def status(self) -> dict[str, bool | str | None]:
+        with self._lock:
+            return {
+                "model_loaded": self._model is not None,
+                "model_ready": self._warmed_up,
+                "device": self._device,
+                "model_path": self._resolved_model_path,
+            }
+
+    def _resolve_model_path(self) -> str:
+        requested_path = Path(self.model_path)
+        if requested_path.is_absolute():
+            if requested_path.exists():
+                return str(requested_path)
+            raise FileNotFoundError(f"YOLO model file was not found at {requested_path}.")
+
+        service_root = Path(__file__).resolve().parents[2]
+        bundled_path = service_root / "models" / requested_path.name
+        if bundled_path.exists():
+            return str(bundled_path)
+
+        raise FileNotFoundError(
+            f"YOLO model file was not found at {bundled_path}. "
+            "Ensure the bundled model exists under ml-service/models."
+        )
 
     def _load_model(self):
         with self._lock:
@@ -35,12 +63,9 @@ class YoloPersonTracker:
             from ultralytics import YOLO
             import torch
 
-            model_source = self.model_path
-            local_model = Path(__file__).resolve().parents[2] / "models" / self.model_path
-            if local_model.exists():
-                model_source = str(local_model)
-
+            model_source = self._resolve_model_path()
             self._model = YOLO(model_source)
+            self._resolved_model_path = model_source
             self._device = "cuda:0" if torch.cuda.is_available() else "cpu"
             self._use_half = self._device.startswith("cuda")
             try:
@@ -50,22 +75,26 @@ class YoloPersonTracker:
             return self._model
 
     def warmup(self) -> None:
-        model = self._load_model()
-        if self._warmed_up:
-            return
+        with self._warmup_lock:
+            with self._lock:
+                if self._warmed_up:
+                    return
 
-        blank_frame = np.zeros((self.image_size, self.image_size, 3), dtype=np.uint8)
-        model.predict(
-            blank_frame,
-            classes=[0],
-            conf=0.25,
-            device=self._device,
-            half=self._use_half,
-            imgsz=self.image_size,
-            max_det=self.max_detections,
-            verbose=False,
-        )
-        self._warmed_up = True
+            model = self._load_model()
+
+            blank_frame = np.zeros((self.image_size, self.image_size, 3), dtype=np.uint8)
+            model.predict(
+                blank_frame,
+                classes=[0],
+                conf=0.25,
+                device=self._device,
+                half=self._use_half,
+                imgsz=self.image_size,
+                max_det=self.max_detections,
+                verbose=False,
+            )
+            with self._lock:
+                self._warmed_up = True
 
     def track_people(self, frame, confidence: float) -> list[TrackResult]:
         model = self._load_model()

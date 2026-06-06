@@ -69,6 +69,10 @@ class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
     running: bool
     error: str | None = None
+    model_loaded: bool = False
+    model_ready: bool = False
+    device: str | None = None
+    model_path: str | None = None
 
 
 class CountResponse(BaseModel):
