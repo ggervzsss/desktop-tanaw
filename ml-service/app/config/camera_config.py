@@ -51,6 +51,8 @@ class CameraStartRequest(BaseModel):
 class CameraTestRequest(BaseModel):
     stream_url: str = Field(..., min_length=3)
     camera_type: CameraType = "IP_WEBCAM"
+    username: str | None = Field(default=None, max_length=120)
+    password: str | None = Field(default=None, max_length=240)
 
     @field_validator("stream_url")
     @classmethod

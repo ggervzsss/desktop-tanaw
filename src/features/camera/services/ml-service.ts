@@ -122,7 +122,12 @@ export async function testCameraConnection(baseUrl: string, camera: Camera): Pro
     `${baseUrl}/camera/test`,
     {
       method: "POST",
-      body: JSON.stringify({ camera_type: camera.cameraType, stream_url: camera.rtsp }),
+      body: JSON.stringify({
+        camera_type: camera.cameraType,
+        password: camera.password || null,
+        stream_url: camera.rtsp,
+        username: camera.username || null,
+      }),
     },
     8000,
   );

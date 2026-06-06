@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle } from "lucide-react";
 import type { Camera } from "../../../types/enterprise";
+import { maskStreamCredentials } from "../utils/rtsp";
 
 type CameraReadOnlyDetailsProps = {
   activeCam: Camera;
@@ -10,7 +11,7 @@ export function CameraReadOnlyDetails({ activeCam }: CameraReadOnlyDetailsProps)
     <div className="mt-auto grid grid-cols-2 gap-x-8 gap-y-5 rounded-sm border border-gray-200 bg-white p-4 shadow-sm">
       <div>
         <label className="mb-1 block text-xs font-bold text-gray-500 uppercase">Stream URL</label>
-        <input type="text" readOnly value={activeCam.rtsp} className="w-full rounded-sm border border-gray-200 bg-gray-50 p-2 font-mono text-sm text-gray-600 focus:outline-none" />
+        <input type="text" readOnly value={maskStreamCredentials(activeCam.rtsp)} className="w-full rounded-sm border border-gray-200 bg-gray-50 p-2 font-mono text-sm text-gray-600 focus:outline-none" />
       </div>
       <div>
         <label className="mb-1 block text-xs font-bold text-gray-500 uppercase">Assigned Zone</label>

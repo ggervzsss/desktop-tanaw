@@ -1,6 +1,7 @@
 import React from "react";
 import { Maximize, Video } from "lucide-react";
 import type { Camera } from "../../../types/enterprise";
+import { TapoRtspBuilder } from "./TapoRtspBuilder";
 
 type CameraEditControlsProps = {
   editForm: Camera;
@@ -15,6 +16,8 @@ const roiFields = [
 ] as const;
 
 export function CameraEditControls({ editForm, onEditFormChange }: CameraEditControlsProps) {
+  const isRtspCamera = editForm.cameraType === "RTSP_CCTV" || editForm.cameraType === "ONVIF_CCTV";
+
   return (
     <div className="grid grid-cols-1 gap-6 rounded-sm border border-gray-200 bg-white p-4 shadow-inner md:grid-cols-2">
       <div className="md:col-span-2">
@@ -75,6 +78,11 @@ export function CameraEditControls({ editForm, onEditFormChange }: CameraEditCon
             />
           </div>
         </div>
+        {isRtspCamera && (
+          <div className="mt-4">
+            <TapoRtspBuilder streamUrl={editForm.rtsp} onStreamUrlChange={(rtsp) => onEditFormChange({ ...editForm, rtsp })} />
+          </div>
+        )}
       </div>
 
       <div className="md:col-span-2">

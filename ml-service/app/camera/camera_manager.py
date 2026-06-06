@@ -19,6 +19,7 @@ from app.camera.stream_reader import (
     validate_http_jpeg_snapshot,
     validate_stream,
 )
+from app.camera.auth import build_authenticated_stream_url, redact_stream_credentials
 from app.config.camera_config import CameraStartRequest
 from app.counting.tripwire_counter import TripwireCounter
 from app.detection.yolo_detector import YoloPersonTracker
@@ -68,11 +69,11 @@ class CameraProcessingManager:
         with self._lock:
             return self._state.running
 
-    def test_connection(self, stream_url: str, camera_type: str = "IP_WEBCAM") -> tuple[bool, str]:
+    def test_connection(self, stream_url: str, camera_type: str = "IP_WEBCAM", username: str | None = None, password: str | None = None) -> tuple[bool, str]:
         try:
-            config = CameraStartRequest(stream_url=stream_url, camera_type=camera_type)
+            config = CameraStartRequest(stream_url=stream_url, camera_type=camera_type, username=username, password=password)
         except Exception as exc:
-            return False, str(exc)
+            return False, redact_stream_credentials(str(exc))
 
         return self._validate_config_stream(config)
 
@@ -137,7 +138,7 @@ class CameraProcessingManager:
                 **snapshot,
                 "running": self._state.running,
                 "status": self._state.status,
-                "error": self._state.error,
+                "error": redact_stream_credentials(self._state.error) if self._state.error else None,
             }
 
     def detections(self) -> dict[str, int | str | bool | None | list[dict[str, int | float | str | tuple[int, int] | tuple[int, int, int, int] | None]]]:
@@ -150,7 +151,7 @@ class CameraProcessingManager:
             return {
                 "running": self._state.running,
                 "status": self._state.status,
-                "error": self._state.error,
+                "error": redact_stream_credentials(self._state.error) if self._state.error else None,
                 "frame_width": frame_width,
                 "frame_height": frame_height,
                 "tracks": [
@@ -171,10 +172,10 @@ class CameraProcessingManager:
             return {
                 "running": self._state.running,
                 "status": self._state.status,
-                "error": self._state.error,
+                "error": redact_stream_credentials(self._state.error) if self._state.error else None,
                 "camera_id": self._config.camera_id if self._config else None,
                 "camera_name": self._config.camera_name if self._config else None,
-                "camera_config": self._config.model_dump(mode="json") if self._config else None,
+                "camera_config": self._public_config_dump() if self._config else None,
                 "counts": counts,
                 "updated_at": self._session_updated_at,
             }
@@ -208,7 +209,7 @@ class CameraProcessingManager:
                 return True
             except Exception as exc:
                 with self._raw_frame_condition:
-                    self._state = RuntimeState(running=False, status="error", error=f"Unable to restore monitoring session: {exc}")
+                    self._state = RuntimeState(running=False, status="error", error=redact_stream_credentials(f"Unable to restore monitoring session: {exc}"))
                     self._config = config
                     self._persist_session_locked()
                     self._raw_frame_condition.notify_all()
@@ -246,22 +247,29 @@ class CameraProcessingManager:
             self._set_error("Camera configuration is missing.")
             return
 
-        snapshot_url = build_ip_webcam_snapshot_url(config.stream_url) if config.camera_type == "IP_WEBCAM" else None
+        runtime_stream_url = self._runtime_stream_url(config)
+        snapshot_url = build_ip_webcam_snapshot_url(runtime_stream_url) if config.camera_type == "IP_WEBCAM" else None
         if snapshot_url is not None:
             self._ip_webcam_snapshot_capture_loop(config, snapshot_url)
             return
 
-        if is_mjpeg_http_stream(config.stream_url):
-            self._mjpeg_capture_loop(config)
+        if is_mjpeg_http_stream(runtime_stream_url):
+            self._mjpeg_capture_loop(config, runtime_stream_url)
         else:
-            self._opencv_capture_loop(config)
+            self._opencv_capture_loop(config, runtime_stream_url)
 
     def _validate_config_stream(self, config: CameraStartRequest) -> tuple[bool, str]:
-        snapshot_url = build_ip_webcam_snapshot_url(config.stream_url) if config.camera_type == "IP_WEBCAM" else None
+        runtime_stream_url = self._runtime_stream_url(config)
+        snapshot_url = build_ip_webcam_snapshot_url(runtime_stream_url) if config.camera_type == "IP_WEBCAM" else None
         if snapshot_url is not None:
-            return validate_http_jpeg_snapshot(snapshot_url)
+            ok, message = validate_http_jpeg_snapshot(snapshot_url)
+            return ok, redact_stream_credentials(message)
 
-        return validate_stream(config.stream_url)
+        ok, message = validate_stream(runtime_stream_url)
+        return ok, redact_stream_credentials(message)
+
+    def _runtime_stream_url(self, config: CameraStartRequest) -> str:
+        return build_authenticated_stream_url(config.stream_url, config.username, config.password)
 
     def _ip_webcam_snapshot_capture_loop(self, config: CameraStartRequest, snapshot_url: str) -> None:
         failed_reads = 0
@@ -281,7 +289,7 @@ class CameraProcessingManager:
                 if frame is None:
                     failed_reads += 1
                     if failed_reads >= 30:
-                        self._set_error(f"Camera snapshot endpoint stopped returning frames: {last_error}")
+                        self._set_error(redact_stream_credentials(f"Camera snapshot endpoint stopped returning frames: {last_error}"))
                         return
                 else:
                     failed_reads = 0
@@ -293,15 +301,15 @@ class CameraProcessingManager:
                 if remaining > 0:
                     time.sleep(remaining)
         except Exception as exc:
-            self._set_error(str(exc))
+            self._set_error(redact_stream_credentials(str(exc)))
         finally:
             with self._lock:
                 if not self._stop_event.is_set() and self._state.status != "error":
                     self._state.status = "stopped"
 
-    def _mjpeg_capture_loop(self, config: CameraStartRequest) -> None:
+    def _mjpeg_capture_loop(self, config: CameraStartRequest, stream_url: str) -> None:
         try:
-            for frame in iter_mjpeg_frames(config.stream_url, self._stop_event):
+            for frame in iter_mjpeg_frames(stream_url, self._stop_event):
                 if self._stop_event.is_set():
                     break
 
@@ -311,14 +319,14 @@ class CameraProcessingManager:
             if not self._stop_event.is_set():
                 self._set_error("Camera stream stopped returning MJPEG frames.")
         except Exception as exc:
-            self._set_error(str(exc))
+            self._set_error(redact_stream_credentials(str(exc)))
         finally:
             with self._lock:
                 if self._state.status != "error":
                     self._state.status = "stopped"
 
-    def _opencv_capture_loop(self, config: CameraStartRequest) -> None:
-        capture = open_capture(config.stream_url)
+    def _opencv_capture_loop(self, config: CameraStartRequest, stream_url: str) -> None:
+        capture = open_capture(stream_url)
         failed_reads = 0
 
         try:
@@ -340,7 +348,7 @@ class CameraProcessingManager:
                 frame = self._resize_for_processing(frame, config.max_frame_width)
                 self._publish_raw_frame(frame)
         except Exception as exc:
-            self._set_error(str(exc))
+            self._set_error(redact_stream_credentials(str(exc)))
         finally:
             capture.release()
             with self._lock:
@@ -570,8 +578,9 @@ class CameraProcessingManager:
 
     def _set_error(self, message: str) -> None:
         with self._raw_frame_condition:
-            self._state = RuntimeState(running=False, status="error", error=message)
-            self._latest_jpeg = self._build_status_frame(message)
+            safe_message = redact_stream_credentials(message)
+            self._state = RuntimeState(running=False, status="error", error=safe_message)
+            self._latest_jpeg = self._build_status_frame(safe_message)
             self._latest_stream_jpeg = self._latest_jpeg
             self._latest_stream_frame_id += 1
             self._persist_session_locked()
@@ -608,7 +617,7 @@ class CameraProcessingManager:
         payload = {
             "running": self._state.running,
             "status": self._state.status,
-            "error": self._state.error,
+            "error": redact_stream_credentials(self._state.error) if self._state.error else None,
             "camera_id": self._config.camera_id if self._config else None,
             "camera_name": self._config.camera_name if self._config else None,
             "camera_config": self._config.model_dump(mode="json") if self._config else None,
@@ -616,7 +625,7 @@ class CameraProcessingManager:
                 **counts,
                 "running": self._state.running,
                 "status": self._state.status,
-                "error": self._state.error,
+                "error": redact_stream_credentials(self._state.error) if self._state.error else None,
             },
         }
         try:
@@ -625,6 +634,16 @@ class CameraProcessingManager:
             self._session_updated_at = saved_payload.get("updated_at") if saved_payload else None
         except OSError:
             return
+
+    def _public_config_dump(self) -> dict:
+        if self._config is None:
+            return {}
+
+        payload = self._config.model_dump(mode="json")
+        if payload.get("password"):
+            payload["password"] = None
+        payload["stream_url"] = redact_stream_credentials(str(payload.get("stream_url", "")))
+        return payload
 
     def _restore_saved_snapshot(self, payload: dict | None) -> None:
         if not payload:

@@ -5,6 +5,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
+from app.camera.auth import redact_stream_credentials
 from app.camera.camera_manager import CameraProcessingManager
 from app.config.camera_config import CameraStartRequest, CameraTestRequest, CameraTestResponse, CountResponse, DetectionResponse, HealthResponse, SessionResponse
 
@@ -34,7 +35,7 @@ def health() -> HealthResponse:
 
 @app.post("/camera/test", response_model=CameraTestResponse)
 def test_camera(payload: CameraTestRequest) -> CameraTestResponse:
-    ok, message = manager.test_connection(payload.stream_url, payload.camera_type)
+    ok, message = manager.test_connection(payload.stream_url, payload.camera_type, payload.username, payload.password)
     return CameraTestResponse(ok=ok, message=message)
 
 
@@ -43,9 +44,9 @@ def start_camera(payload: CameraStartRequest) -> dict[str, str]:
     try:
         manager.start(payload)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=redact_stream_credentials(str(exc))) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=redact_stream_credentials(str(exc))) from exc
 
     return {"message": "Camera processing started."}
 

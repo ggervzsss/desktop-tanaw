@@ -2,6 +2,7 @@ import { Check, RefreshCw, Shield, Video, X } from "lucide-react";
 import type { FormEvent } from "react";
 import { ModalPortal } from "../../../components/ModalPortal";
 import type { CameraFormValues } from "../types/camera";
+import { TapoRtspBuilder } from "./TapoRtspBuilder";
 
 type CameraAddModalProps = {
   newCam: CameraFormValues;
@@ -13,7 +14,8 @@ type CameraAddModalProps = {
 };
 
 export function CameraAddModal({ newCam, isValidating, errors, onClose, onSubmit, onChange }: CameraAddModalProps) {
-  const streamPlaceholder = newCam.cameraType === "IP_WEBCAM" ? "http://192.168.1.25:8080/video" : "rtsp://username:password@ip:port/stream";
+  const streamPlaceholder = newCam.cameraType === "IP_WEBCAM" ? "http://192.168.1.25:8080/video" : "rtsp://192.168.1.9:554/stream2";
+  const isRtspCamera = newCam.cameraType === "RTSP_CCTV" || newCam.cameraType === "ONVIF_CCTV";
 
   return (
     <ModalPortal>
@@ -86,6 +88,8 @@ export function CameraAddModal({ newCam, isValidating, errors, onClose, onSubmit
               </div>
             </div>
 
+            {isRtspCamera && <TapoRtspBuilder streamUrl={newCam.rtsp} onStreamUrlChange={(rtsp) => onChange({ ...newCam, rtsp })} />}
+
             <div className="grid gap-4 md:grid-cols-3">
               <div>
                 <label className="mb-1 block text-xs font-bold tracking-wider text-gray-500 uppercase">Confidence</label>
@@ -109,6 +113,7 @@ export function CameraAddModal({ newCam, isValidating, errors, onClose, onSubmit
                   placeholder="Optional"
                   className="w-full rounded-xl border border-gray-300 p-3 text-sm outline-none transition focus:border-[#065f46]"
                 />
+                {errors.username && <p className="text-tanaw-red mt-1.5 text-xs font-semibold">{errors.username}</p>}
               </div>
               <div>
                 <label className="mb-1 block text-xs font-bold tracking-wider text-gray-500 uppercase">Password</label>
@@ -119,12 +124,13 @@ export function CameraAddModal({ newCam, isValidating, errors, onClose, onSubmit
                   placeholder="Optional"
                   className="w-full rounded-xl border border-gray-300 p-3 text-sm outline-none transition focus:border-[#065f46]"
                 />
+                {errors.password && <p className="text-tanaw-red mt-1.5 text-xs font-semibold">{errors.password}</p>}
               </div>
             </div>
 
             <div className="mt-4 flex items-start gap-2 rounded-xl border border-emerald-100 bg-emerald-50/80 p-3 text-xs text-emerald-800">
               <Shield size={16} className="mt-0.5 shrink-0" />
-              <p>Credentials and video processing stay on this enterprise device. The MVP supports IP Webcam streams now and keeps the same pipeline ready for RTSP later.</p>
+              <p>Credentials and video processing stay on this enterprise device. RTSP credentials are passed to the local ML service without embedding them in the visible stream URL.</p>
             </div>
 
             <div className="flex justify-end gap-3 border-t border-gray-100 pt-4">

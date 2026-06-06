@@ -6,9 +6,13 @@ from urllib.parse import urlparse, urlunparse
 
 os.environ.setdefault("OPENCV_FFMPEG_LOGLEVEL", "16")
 os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
+os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp|stimeout;5000000|max_delay;500000")
 
 import cv2
 import numpy as np
+
+OPEN_TIMEOUT_MS = 5000
+READ_TIMEOUT_MS = 5000
 
 
 def resolve_capture_source(stream_url: str) -> str | int:
@@ -20,15 +24,39 @@ def resolve_capture_source(stream_url: str) -> str | int:
 
 def open_capture(stream_url: str):
     source = resolve_capture_source(stream_url)
-    capture = cv2.VideoCapture(source)
+    capture = cv2.VideoCapture()
+    _configure_capture(capture)
+
+    if _should_use_ffmpeg(source):
+        capture.open(source, cv2.CAP_FFMPEG)
+        if not capture.isOpened():
+            capture.release()
+            capture = cv2.VideoCapture()
+            _configure_capture(capture)
+            capture.open(source)
+    else:
+        capture.open(source)
+
+    _configure_capture(capture)
+
+    return capture
+
+
+def _configure_capture(capture) -> None:
     capture.set(cv2.CAP_PROP_BUFFERSIZE, 2)
 
     if hasattr(cv2, "CAP_PROP_OPEN_TIMEOUT_MSEC"):
-        capture.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000)
+        capture.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, OPEN_TIMEOUT_MS)
     if hasattr(cv2, "CAP_PROP_READ_TIMEOUT_MSEC"):
-        capture.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 5000)
+        capture.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, READ_TIMEOUT_MS)
 
-    return capture
+
+def _should_use_ffmpeg(source: str | int) -> bool:
+    if not isinstance(source, str):
+        return False
+
+    parsed = urlparse(source.strip())
+    return parsed.scheme in {"rtsp", "http", "https"}
 
 
 def is_mjpeg_http_stream(stream_url: str) -> bool:
@@ -145,7 +173,7 @@ def validate_stream(stream_url: str, attempts: int = 8) -> tuple[bool, str]:
     capture = open_capture(stream_url)
     try:
         if not capture.isOpened():
-            return False, "Camera stream could not be opened."
+            return False, _stream_open_error(stream_url)
 
         for _ in range(attempts):
             ok, frame = capture.read()
@@ -153,9 +181,17 @@ def validate_stream(stream_url: str, attempts: int = 8) -> tuple[bool, str]:
                 return True, "Camera stream is reachable."
             time.sleep(0.15)
 
-        return False, "Camera stream opened, but no frames were readable."
+        return False, "Camera stream opened, but no frames were readable within the timeout."
     finally:
         capture.release()
+
+
+def _stream_open_error(stream_url: str) -> str:
+    parsed = urlparse(stream_url.strip())
+    if parsed.scheme == "rtsp":
+        return "RTSP camera stream could not be opened. Check the camera IP, RTSP path, username/password, and that RTSP is enabled on the camera."
+
+    return "Camera stream could not be opened."
 
 
 class _NeverStop:

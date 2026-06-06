@@ -228,7 +228,14 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
       return;
     }
 
-    setCameras((current) => current.map((camera) => (camera.id === activeCamId ? { ...editForm, status: camera.rtsp === editForm.rtsp ? editForm.status : "untested" } : camera)));
+    setCameras((current) =>
+      current.map((camera) => {
+        if (camera.id !== activeCamId) return camera;
+
+        const connectionChanged = camera.rtsp !== editForm.rtsp || camera.cameraType !== editForm.cameraType || camera.username !== editForm.username || camera.password !== editForm.password;
+        return { ...editForm, status: connectionChanged ? "untested" : editForm.status };
+      }),
+    );
     setMonitoringError(null);
     setIsEditMode(false);
   };
@@ -253,7 +260,7 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
       fps: 0,
       id: Date.now(),
       name: newCam.name.trim(),
-      password: newCam.password.trim() || undefined,
+      password: newCam.password || undefined,
       resolution: "Adaptive",
       rtsp: newCam.rtsp.trim(),
       status: "untested",
