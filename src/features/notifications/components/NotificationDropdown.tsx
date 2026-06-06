@@ -1,4 +1,4 @@
-import { AlertCircle, AlertTriangle, Bell, CheckCircle, Settings } from "lucide-react";
+import { AlertCircle, AlertTriangle, Bell, CheckCircle, Inbox, Settings } from "lucide-react";
 import type { EnterpriseNotification, EnterpriseView } from "../../../types/enterprise";
 
 type NotificationDropdownProps = {
@@ -8,11 +8,11 @@ type NotificationDropdownProps = {
   showSettings: boolean;
   occupancyThreshold: number;
   onToggleOpen: () => void;
-  onClose: () => void;
   onToggleSettings: () => void;
   onMarkAllRead: () => void;
   onSelectNotification: (notification: EnterpriseNotification) => void;
   onSetOccupancyThreshold: (threshold: number) => void;
+  onViewAll: () => void;
   triggerVariant?: "default" | "topbar";
 };
 
@@ -33,8 +33,10 @@ export function NotificationDropdown({
   onMarkAllRead,
   onSelectNotification,
   onSetOccupancyThreshold,
+  onViewAll,
   triggerVariant = "default",
 }: NotificationDropdownProps) {
+  const countLabel = unreadCount > 99 ? "99+" : String(unreadCount);
   const triggerClassName =
     triggerVariant === "topbar"
       ? "relative flex h-11 w-11 items-center justify-center rounded-full border border-emerald-100/28 bg-white/[0.08] text-white shadow-sm backdrop-blur-md transition-all duration-200 hover:-translate-y-0.5 hover:bg-white/[0.15] hover:shadow-[0_10px_24px_rgba(3,38,16,0.34)] active:translate-y-0"
@@ -44,18 +46,26 @@ export function NotificationDropdown({
     <div className="relative">
       <button onClick={onToggleOpen} className={triggerClassName} aria-label="Notifications">
         <Bell size={18} />
-        {unreadCount > 0 && <span className={`bg-tanaw-red absolute h-2.5 w-2.5 rounded-full border-2 ${triggerVariant === "topbar" ? "top-1 right-1 border-tanaw-green" : "top-0 right-0 border-white"}`}></span>}
+        {unreadCount > 0 && (
+          <span
+            className={`bg-tanaw-red absolute flex min-h-5 min-w-5 items-center justify-center rounded-full border-2 px-1 text-[10px] font-black leading-none text-white shadow-sm ${
+              triggerVariant === "topbar" ? "-top-1 -right-1 border-tanaw-green" : "-top-1 -right-1 border-white"
+            }`}
+          >
+            {countLabel}
+          </span>
+        )}
       </button>
 
       {isOpen && (
-        <div className="animate-in slide-in-from-top-2 absolute right-0 z-50 mt-2 flex max-h-128 w-80 flex-col overflow-hidden rounded-xl border border-gray-100 bg-white shadow-xl duration-200">
-          <div className="flex shrink-0 items-center justify-between border-b border-gray-100 bg-gray-50 p-3">
+        <div className="animate-in slide-in-from-top-2 absolute top-full right-0 z-[1003] mt-4 flex max-h-[34rem] w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-[24px] border border-white/85 bg-white shadow-[0_24px_64px_rgba(2,20,8,0.24)] ring-1 ring-emerald-950/[0.06] duration-200">
+          <div className="flex shrink-0 items-center justify-between border-b border-emerald-100 bg-gradient-to-r from-emerald-50 via-white to-amber-50/70 p-4">
             <h3 className="flex items-center gap-2 text-sm font-bold text-[#111827]">
-              System Alerts
+              Notifications
               {unreadCount > 0 && <span className="bg-tanaw-red rounded-sm px-1.5 py-0.5 text-[10px] leading-none text-white shadow-sm">{unreadCount}</span>}
             </h3>
             <div className="flex items-center gap-3">
-              <button onClick={onMarkAllRead} className="text-[10px] font-bold tracking-wider text-[#2d5eff] uppercase hover:underline">
+              <button disabled={unreadCount === 0} onClick={onMarkAllRead} className="text-[10px] font-bold tracking-wider text-[#065f46] uppercase hover:underline disabled:cursor-not-allowed disabled:text-gray-300">
                 Mark all read
               </button>
               <button onClick={onToggleSettings} className={`rounded-sm p-1 transition-colors ${showSettings ? "bg-[#065f46] text-white" : "text-gray-400 hover:bg-gray-200 hover:text-[#065f46]"}`}>
@@ -99,9 +109,20 @@ export function NotificationDropdown({
                 {!notification.read && <div className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#2d5eff] shadow-sm"></div>}
               </div>
             ))}
+            {notifications.length === 0 && (
+              <div className="flex min-h-52 flex-col items-center justify-center px-6 py-10 text-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-3xl bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100">
+                  <Inbox size={20} />
+                </div>
+                <p className="mt-4 text-sm font-black text-[#111827]">No notifications</p>
+                <p className="mt-1 max-w-[17rem] text-xs leading-relaxed text-gray-500">Report deadline and submission workflow alerts will appear here when the ledger has matching data.</p>
+              </div>
+            )}
           </div>
           <div className="shrink-0 border-t border-gray-100 bg-gray-50 p-2.5 text-center">
-            <button className="text-[10px] font-bold tracking-wider text-gray-500 uppercase hover:text-[#065f46]">View Alert Ledger</button>
+            <button onClick={onViewAll} className="text-[10px] font-bold tracking-wider text-gray-500 uppercase hover:text-[#065f46]">
+              View Reports & Subs
+            </button>
           </div>
         </div>
       )}

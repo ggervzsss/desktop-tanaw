@@ -3,13 +3,16 @@ import { Card } from "../../../components/Card";
 
 export function ActiveSessionsPanel() {
   return (
-    <Card className="p-6">
-      <div className="mb-5 flex items-center justify-between border-b border-gray-100 pb-2">
+    <Card className="rounded-[28px] border-emerald-100/80 p-6 shadow-[0_18px_44px_rgba(15,23,42,0.07)]">
+      <div className="mb-5 flex items-center justify-between border-b border-emerald-100 pb-3">
         <h3 className="flex items-center gap-2 text-sm font-bold tracking-wider text-[#111827] uppercase">
-          <MonitorSmartphone size={16} className="text-[#065f46]" /> Active Sessions
+          <span className="flex h-8 w-8 items-center justify-center rounded-2xl bg-emerald-50 text-[#065f46]">
+            <MonitorSmartphone size={16} />
+          </span>
+          Active Sessions
         </h3>
       </div>
-      <div className="overflow-x-auto rounded-sm border border-gray-200">
+      <div className="overflow-x-auto rounded-2xl border border-gray-200 shadow-sm">
         <table className="w-full text-left text-sm whitespace-nowrap">
           <thead className="bg-gray-50 text-[10px] font-bold tracking-wider text-gray-500 uppercase">
             <tr>
