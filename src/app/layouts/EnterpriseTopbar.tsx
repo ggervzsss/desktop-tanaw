@@ -19,6 +19,7 @@ type EnterpriseTopbarProps = {
   onMarkAllRead: () => void;
   onNavigate: (view: EnterpriseView) => void;
   onNotificationSelect: (notification: EnterpriseNotification) => void;
+  onNotificationsClose: () => void;
   onNotificationsToggle: () => void;
   onSetOccupancyThreshold: (threshold: number) => void;
   onToggleNotificationSettings: () => void;
@@ -44,6 +45,7 @@ export function EnterpriseTopbar({
   onMarkAllRead,
   onNavigate,
   onNotificationSelect,
+  onNotificationsClose,
   onNotificationsToggle,
   onSetOccupancyThreshold,
   onToggleNotificationSettings,
@@ -51,6 +53,7 @@ export function EnterpriseTopbar({
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showMobileNav, setShowMobileNav] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
+  const notificationMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!showProfileMenu) return undefined;
@@ -66,17 +69,31 @@ export function EnterpriseTopbar({
   }, [showProfileMenu]);
 
   useEffect(() => {
-    if (!showProfileMenu && !showMobileNav) return undefined;
+    if (!isNotificationsOpen) return undefined;
+
+    const closeOnOutsidePointerDown = (event: PointerEvent) => {
+      if (!notificationMenuRef.current?.contains(event.target as Node)) {
+        onNotificationsClose();
+      }
+    };
+
+    document.addEventListener("pointerdown", closeOnOutsidePointerDown);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointerDown);
+  }, [isNotificationsOpen, onNotificationsClose]);
+
+  useEffect(() => {
+    if (!showProfileMenu && !showMobileNav && !isNotificationsOpen) return undefined;
 
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       setShowProfileMenu(false);
       setShowMobileNav(false);
+      onNotificationsClose();
     };
 
     document.addEventListener("keydown", closeOnEscape);
     return () => document.removeEventListener("keydown", closeOnEscape);
-  }, [showMobileNav, showProfileMenu]);
+  }, [isNotificationsOpen, onNotificationsClose, showMobileNav, showProfileMenu]);
 
   const profileEmail = user?.email ?? "No account email";
   const roleSubtitle = `${String(user?.role ?? "enterprise").toLowerCase()} Role`;
@@ -131,26 +148,34 @@ export function EnterpriseTopbar({
               {showMobileNav ? <X size={18} /> : <Menu size={18} />}
             </button>
 
-            <NotificationDropdown
-              isOpen={isNotificationsOpen}
-              notifications={notifications}
-              unreadCount={unreadCount}
-              showSettings={showNotificationSettings}
-              occupancyThreshold={occupancyThreshold}
-              triggerVariant="topbar"
-              onToggleOpen={onNotificationsToggle}
-              onClose={() => undefined}
-              onToggleSettings={onToggleNotificationSettings}
-              onMarkAllRead={onMarkAllRead}
-              onSelectNotification={onNotificationSelect}
-              onSetOccupancyThreshold={onSetOccupancyThreshold}
-            />
+            <div ref={notificationMenuRef} className="relative z-[1002]">
+              <NotificationDropdown
+                isOpen={isNotificationsOpen}
+                notifications={notifications}
+                unreadCount={unreadCount}
+                showSettings={showNotificationSettings}
+                occupancyThreshold={occupancyThreshold}
+                triggerVariant="topbar"
+                onToggleOpen={() => {
+                  setShowProfileMenu(false);
+                  onNotificationsToggle();
+                }}
+                onToggleSettings={onToggleNotificationSettings}
+                onMarkAllRead={onMarkAllRead}
+                onSelectNotification={onNotificationSelect}
+                onSetOccupancyThreshold={onSetOccupancyThreshold}
+                onViewAll={() => onNavigate("reports")}
+              />
+            </div>
 
-            <div ref={profileMenuRef} className="relative">
+            <div ref={profileMenuRef} className="relative z-[1002]">
               <button
                 type="button"
                 aria-label="Open account menu"
-                onClick={() => setShowProfileMenu((current) => !current)}
+                onClick={() => {
+                  setShowProfileMenu((current) => !current);
+                  onNotificationsClose();
+                }}
                 className="flex min-w-[242px] items-center gap-3 rounded-full border border-emerald-100/28 bg-white/[0.08] py-2 pr-4 pl-2 text-white shadow-[0_10px_24px_rgba(2,20,8,0.22)] backdrop-blur-md transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-100/40 hover:bg-white/[0.14] hover:shadow-[0_14px_32px_rgba(2,20,8,0.3)] active:translate-y-0 max-2xl:min-w-[224px] max-sm:min-w-0 max-sm:pr-2.5"
               >
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/45 bg-[#087333] text-sm font-bold text-white shadow-inner ring-1 ring-emerald-100/30 max-sm:h-9 max-sm:w-9">{initials}</div>
@@ -168,19 +193,19 @@ export function EnterpriseTopbar({
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 8, scale: 0.98 }}
                     transition={{ duration: 0.18, ease: "easeOut" }}
-                    className="absolute right-0 z-[1001] mt-3 w-72 overflow-hidden rounded-2xl border border-white/80 bg-white py-2 text-slate-700 shadow-[0_18px_44px_rgba(15,23,42,0.18)] ring-1 ring-slate-900/4"
+                    className="absolute top-full right-0 z-[1003] mt-3 w-72 overflow-hidden rounded-[24px] border border-white/85 bg-white py-2 text-slate-700 shadow-[0_24px_64px_rgba(2,20,8,0.24)] ring-1 ring-emerald-950/[0.06]"
                   >
-                    <div className="mb-1 border-b border-slate-100 px-4 py-3.5">
+                    <div className="mb-1 border-b border-emerald-100 bg-gradient-to-r from-emerald-50/90 via-white to-amber-50/70 px-4 py-3.5">
                       <p className="text-tanaw-navy text-sm font-bold">{displayName}</p>
                       <p className="truncate text-xs text-gray-500">{profileEmail}</p>
                     </div>
-                    <button type="button" onClick={() => navigateFromMenu("profile")} className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm font-semibold text-slate-700 transition-colors hover:bg-emerald-50 hover:text-[#065f46]">
+                    <button type="button" onClick={() => navigateFromMenu("profile")} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-slate-700 transition-colors hover:bg-emerald-50 hover:text-[#065f46]">
                       <User size={14} /> Edit Profile Info
                     </button>
-                    <button type="button" onClick={() => navigateFromMenu("security")} className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm font-semibold text-slate-700 transition-colors hover:bg-emerald-50 hover:text-[#065f46]">
+                    <button type="button" onClick={() => navigateFromMenu("security")} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold text-slate-700 transition-colors hover:bg-emerald-50 hover:text-[#065f46]">
                       <Shield size={14} /> Security & Data Control
                     </button>
-                    <button type="button" onClick={onLogout} className="text-tanaw-red flex w-full items-center gap-2 px-4 py-2 text-left text-sm font-semibold transition-colors hover:bg-red-50">
+                    <button type="button" onClick={onLogout} className="text-tanaw-red flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-semibold transition-colors hover:bg-red-50">
                       <LogOut size={14} /> Sign Out
                     </button>
                   </motion.div>

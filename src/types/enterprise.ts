@@ -30,6 +30,9 @@ export type ReportRecord = {
   exits?: number;
   unique: number;
   period?: SystemLogPeriod;
+  deadline?: string;
+  dueDate?: string;
+  submissionDeadline?: string;
   demo?: DemoBreakdown;
   notes?: string;
   auditTrail?: AuditEntry[];

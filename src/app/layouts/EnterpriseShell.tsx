@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { CriticalAlertToasts } from "../../features/alerts/components/CriticalAlertToasts";
@@ -39,7 +39,8 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [reportsHistory, setReportsHistory] = useState<ReportRecord[]>(EMPTY_REPORTS);
   const [cameras, setCameras] = useState<EnterpriseCamera[]>(EMPTY_CAMERAS);
-  const [notifications, setNotifications] = useState<EnterpriseNotification[]>([]);
+  const notificationStorageKey = `tanaw-enterprise-notifications-read:${user?.id ?? "anonymous"}`;
+  const [readNotificationIds, setReadNotificationIds] = useState<Set<number>>(() => readStoredNotificationIds(notificationStorageKey));
   const [toasts, setToasts] = useState<EnterpriseNotification[]>([]);
   const [occupancyThreshold, setOccupancyThreshold] = useState(90);
   const [showNotifSettings, setShowNotifSettings] = useState(false);
@@ -59,6 +60,10 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
       updateUser(currentUserQuery.data);
     }
   }, [currentUserQuery.data, updateUser]);
+
+  useEffect(() => {
+    setReadNotificationIds(readStoredNotificationIds(notificationStorageKey));
+  }, [notificationStorageKey]);
 
   useEffect(() => {
     if (currentUserQuery.isError) {
@@ -110,7 +115,27 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
     navigate(viewRouteById[view]);
   };
 
+  const notifications = useMemo(() => buildEnterpriseNotifications(reportsHistory, readNotificationIds), [readNotificationIds, reportsHistory]);
   const unreadCount = notifications.filter((notification) => !notification.read).length;
+
+  useEffect(() => {
+    const unreadCriticalNotifications = notifications.filter((notification) => notification.type === "critical" && !notification.read);
+    if (unreadCriticalNotifications.length === 0) return;
+
+    setToasts((currentToasts) => {
+      const currentIds = new Set(currentToasts.map((toast) => toast.id));
+      const nextToasts = [...currentToasts, ...unreadCriticalNotifications.filter((notification) => !currentIds.has(notification.id))];
+      return nextToasts.length === currentToasts.length ? currentToasts : nextToasts;
+    });
+  }, [notifications]);
+
+  const markNotificationsRead = (notificationIds: number[]) => {
+    setReadNotificationIds((currentIds) => {
+      const nextIds = new Set([...currentIds, ...notificationIds]);
+      writeStoredNotificationIds(notificationStorageKey, nextIds);
+      return nextIds;
+    });
+  };
 
   return (
     <div className="enterprise-shell relative flex h-screen flex-col overflow-hidden bg-[#eef5f0] font-['Montserrat'] transition-colors duration-300 dark:bg-[#0b1120]">
@@ -125,12 +150,13 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
         unreadCount={unreadCount}
         user={user}
         onLogout={handleLogout}
-        onMarkAllRead={() => setNotifications(notifications.map((notification) => ({ ...notification, read: true })))}
+        onMarkAllRead={() => markNotificationsRead(notifications.map((notification) => notification.id))}
         onNavigate={navigateToView}
         onNotificationSelect={(notification) => {
-          setNotifications(notifications.map((current) => (current.id === notification.id ? { ...current, read: true } : current)));
+          markNotificationsRead([notification.id]);
           navigateToView(notification.target);
         }}
+        onNotificationsClose={() => setIsNotificationsOpen(false)}
         onNotificationsToggle={() => setIsNotificationsOpen((current) => !current)}
         onSetOccupancyThreshold={setOccupancyThreshold}
         onToggleNotificationSettings={() => setShowNotifSettings((current) => !current)}
@@ -153,7 +179,7 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
         onReview={(toast) => {
           navigateToView(toast.target);
           setToasts(toasts.filter((current) => current.id !== toast.id));
-          setNotifications(notifications.map((notification) => (notification.id === toast.id ? { ...notification, read: true } : notification)));
+          markNotificationsRead([toast.id]);
         }}
         onDismiss={(toastId) => setToasts(toasts.filter((toast) => toast.id !== toastId))}
       />
@@ -203,6 +229,112 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
       />
     </div>
   );
+}
+
+function buildEnterpriseNotifications(reportsHistory: ReportRecord[], readNotificationIds: Set<number>) {
+  return reportsHistory
+    .flatMap((report) => buildReportNotifications(report))
+    .sort((left, right) => getNotificationSortValue(right) - getNotificationSortValue(left))
+    .map((notification) => ({
+      ...notification,
+      read: readNotificationIds.has(notification.id),
+    }));
+}
+
+function buildReportNotifications(report: ReportRecord): EnterpriseNotification[] {
+  const notifications: EnterpriseNotification[] = [];
+  const deadline = getReportDeadline(report);
+  const isSubmitted = ["Submitted", "Resubmitted", "Consolidated"].includes(report.status);
+
+  if (deadline && !isSubmitted) {
+    const deadlineDate = Date.parse(deadline);
+    if (Number.isFinite(deadlineDate)) {
+      const daysUntilDeadline = Math.ceil((deadlineDate - Date.now()) / 86_400_000);
+      if (daysUntilDeadline < 0) {
+        notifications.push(createReportNotification(report, "critical", `${report.id} is overdue for ${formatNotificationDate(deadline)}.`, deadline));
+      } else if (daysUntilDeadline <= 3) {
+        notifications.push(createReportNotification(report, "warning", `${report.id} is due ${daysUntilDeadline === 0 ? "today" : `in ${daysUntilDeadline} day${daysUntilDeadline === 1 ? "" : "s"}`}.`, deadline));
+      }
+    }
+  }
+
+  if (report.status === "Returned for Revision") {
+    notifications.push(createReportNotification(report, "warning", `${report.id} was returned for revision. ${report.remarks ?? "Please review the ledger remarks."}`, getLatestAuditTime(report)));
+  }
+
+  if (report.status === "Draft") {
+    notifications.push(createReportNotification(report, "warning", `${report.id} is still a draft for ${report.period ?? report.date}.`, getLatestAuditTime(report)));
+  }
+
+  if (report.status === "Submitted" || report.status === "Resubmitted") {
+    notifications.push(createReportNotification(report, "success", `${report.id} was ${report.status.toLowerCase()} for ${report.period ?? report.date}.`, getLatestAuditTime(report)));
+  }
+
+  return notifications;
+}
+
+function createReportNotification(report: ReportRecord, type: EnterpriseNotification["type"], message: string, timeSource?: string): EnterpriseNotification {
+  const source = `report:${report.id}:${report.status}:${timeSource ?? report.date}`;
+  return {
+    id: stableNotificationId(source),
+    type,
+    message,
+    time: formatNotificationDate(timeSource ?? report.date),
+    read: false,
+    target: "reports",
+  };
+}
+
+function getReportDeadline(report: ReportRecord) {
+  return report.submissionDeadline ?? report.deadline ?? report.dueDate ?? null;
+}
+
+function getLatestAuditTime(report: ReportRecord) {
+  const auditTrail = report.auditTrail ?? [];
+  return auditTrail.length > 0 ? auditTrail[auditTrail.length - 1].time : report.date;
+}
+
+function getNotificationSortValue(notification: EnterpriseNotification) {
+  const parsed = Date.parse(notification.time);
+  return Number.isFinite(parsed) ? parsed : notification.id;
+}
+
+function formatNotificationDate(value: string) {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return value;
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(parsed));
+}
+
+function stableNotificationId(value: string) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash << 5) - hash + value.charCodeAt(index);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+function readStoredNotificationIds(key: string) {
+  if (typeof window === "undefined") return new Set<number>();
+
+  try {
+    const stored = window.localStorage.getItem(key);
+    const parsed = stored ? (JSON.parse(stored) as unknown) : [];
+    return new Set(Array.isArray(parsed) ? parsed.filter((item): item is number => typeof item === "number") : []);
+  } catch {
+    return new Set<number>();
+  }
+}
+
+function writeStoredNotificationIds(key: string, ids: Set<number>) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(key, JSON.stringify(Array.from(ids).slice(-500)));
 }
 
 function getInitials(value: string) {

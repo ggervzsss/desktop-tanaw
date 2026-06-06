@@ -1,4 +1,4 @@
-import { type CSSProperties, type ChangeEvent, type FormEvent, type PointerEvent, useMemo, useRef, useState } from "react";
+import { type CSSProperties, type ChangeEvent, type FormEvent, type PointerEvent, type ReactNode, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Navigate, useLocation } from "react-router-dom";
 import { motion } from "motion/react";
@@ -84,114 +84,134 @@ function RecoveryDialogContent({
 }) {
   if (step === "success") {
     return (
-      <div className="rounded-[40px] border border-emerald-100 bg-emerald-50 p-5 text-sm leading-6 text-emerald-950">
-        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-white text-[var(--tanaw-green)] shadow-sm">
-          <Check className="h-5 w-5" />
+      <RecoveryStepFrame key="success" title="Password Updated">
+        <div className="rounded-[40px] border border-emerald-100 bg-emerald-50 p-5 text-sm leading-6 text-emerald-950">
+          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-white text-[var(--tanaw-green)] shadow-sm">
+            <Check className="h-5 w-5" />
+          </div>
+          <p className="font-semibold">Password updated.</p>
+          <p className="mt-2">You can now sign in with your new password.</p>
+          <button type="button" onClick={onClose} className="mt-5 w-full rounded-[24px] bg-[var(--tanaw-green)] px-4 py-3 font-semibold text-white transition hover:bg-[var(--tanaw-green-dark)]">
+            Return to login
+          </button>
         </div>
-        <p className="font-semibold">Password updated.</p>
-        <p className="mt-2">You can now sign in with your new password.</p>
-        <button type="button" onClick={onClose} className="mt-5 w-full rounded-[24px] bg-[var(--tanaw-green)] px-4 py-3 font-semibold text-white transition hover:bg-[var(--tanaw-green-dark)]">
-          Done
-        </button>
-      </div>
+      </RecoveryStepFrame>
     );
   }
 
   if (step === "code") {
     return (
-      <form onSubmit={onVerify}>
-        <p className="mb-5 text-sm leading-6 text-[var(--tanaw-muted)]">
-          Enter the 6-digit verification code recorded in Dev Log. The code expires in {expiresIn} minutes and can be used once.
-        </p>
-        <label htmlFor="desktop-recovery-code" className="mb-2 block text-sm font-semibold text-[var(--tanaw-text)]">
-          Verification code
-        </label>
-        <input
-          id="desktop-recovery-code"
-          type="text"
-          inputMode="numeric"
-          value={code}
-          onChange={(event) => onCodeChange(event.target.value)}
-          className={cn(
-            "h-12 w-full rounded-[22px] border bg-white px-4 text-sm tracking-[0.3em] outline-none transition focus:border-[var(--tanaw-green)] focus:shadow-[0_0_0_4px_rgba(6,78,47,0.13)]",
-            error ? "border-[var(--tanaw-error)]" : "border-[var(--tanaw-border)]",
-          )}
-          placeholder="000000"
-        />
-        <RecoveryError message={error} />
-        <button type="submit" disabled={isSubmitting} className="mt-4 w-full rounded-[24px] bg-[var(--tanaw-green)] px-4 py-3 font-semibold text-white transition hover:bg-[var(--tanaw-green-dark)] disabled:cursor-not-allowed disabled:opacity-70">
-          {isSubmitting ? "Verifying..." : "Verify code"}
-        </button>
-      </form>
+      <RecoveryStepFrame key="code" title="Verification Code">
+        <form onSubmit={onVerify}>
+          <p className="mb-5 text-sm leading-6 text-[var(--tanaw-muted)]">
+            Enter the 6-digit verification code recorded in Dev Log. The code expires in {expiresIn} minutes and can be used once.
+          </p>
+          <label htmlFor="desktop-recovery-code" className="mb-2 block text-sm font-semibold text-[var(--tanaw-text)]">
+            Verification code
+          </label>
+          <input
+            id="desktop-recovery-code"
+            type="text"
+            inputMode="numeric"
+            value={code}
+            onChange={(event) => onCodeChange(event.target.value)}
+            className={cn(
+              "h-12 w-full rounded-[22px] border bg-white px-4 text-sm tracking-[0.3em] outline-none transition focus:border-[var(--tanaw-green)] focus:shadow-[0_0_0_4px_rgba(6,78,47,0.13)]",
+              error ? "border-[var(--tanaw-error)]" : "border-[var(--tanaw-border)]",
+            )}
+            placeholder="000000"
+          />
+          <RecoveryError message={error} />
+          <button type="submit" disabled={isSubmitting} className="mt-4 w-full rounded-[24px] bg-[var(--tanaw-green)] px-4 py-3 font-semibold text-white transition hover:bg-[var(--tanaw-green-dark)] disabled:cursor-not-allowed disabled:opacity-70">
+            {isSubmitting ? "Verifying..." : "Verify code"}
+          </button>
+        </form>
+      </RecoveryStepFrame>
     );
   }
 
   if (step === "password") {
     return (
-      <form onSubmit={onReset}>
-        <p className="mb-5 text-sm leading-6 text-[var(--tanaw-muted)]">Create a new private password for {email}.</p>
-        <div className="space-y-4">
-          <label className="block">
-            <span className="mb-2 block text-sm font-semibold text-[var(--tanaw-text)]">New password</span>
-            <input
-              type="password"
-              value={password}
-              onChange={(event) => onPasswordChange(event.target.value)}
-              className={cn(
-                "h-12 w-full rounded-[22px] border bg-white px-4 text-sm outline-none transition focus:border-[var(--tanaw-green)] focus:shadow-[0_0_0_4px_rgba(6,78,47,0.13)]",
-                error ? "border-[var(--tanaw-error)]" : "border-[var(--tanaw-border)]",
-              )}
-              placeholder="Enter new password"
-              autoComplete="new-password"
-            />
-          </label>
-          <label className="block">
-            <span className="mb-2 block text-sm font-semibold text-[var(--tanaw-text)]">Confirm password</span>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(event) => onConfirmPasswordChange(event.target.value)}
-              className={cn(
-                "h-12 w-full rounded-[22px] border bg-white px-4 text-sm outline-none transition focus:border-[var(--tanaw-green)] focus:shadow-[0_0_0_4px_rgba(6,78,47,0.13)]",
-                error ? "border-[var(--tanaw-error)]" : "border-[var(--tanaw-border)]",
-              )}
-              placeholder="Confirm new password"
-              autoComplete="new-password"
-            />
-          </label>
-        </div>
-        <RecoveryError message={error} />
-        <button type="submit" disabled={isSubmitting} className="mt-4 w-full rounded-[24px] bg-[var(--tanaw-green)] px-4 py-3 font-semibold text-white transition hover:bg-[var(--tanaw-green-dark)] disabled:cursor-not-allowed disabled:opacity-70">
-          {isSubmitting ? "Updating..." : "Reset password"}
-        </button>
-      </form>
+      <RecoveryStepFrame key="password" title="Set New Password">
+        <form onSubmit={onReset}>
+          <p className="mb-5 text-sm leading-6 text-[var(--tanaw-muted)]">Create a new private password for {email}.</p>
+          <div className="space-y-4">
+            <label className="block">
+              <span className="mb-2 block text-sm font-semibold text-[var(--tanaw-text)]">New password</span>
+              <input
+                type="password"
+                value={password}
+                onChange={(event) => onPasswordChange(event.target.value)}
+                className={cn(
+                  "h-12 w-full rounded-[22px] border bg-white px-4 text-sm outline-none transition focus:border-[var(--tanaw-green)] focus:shadow-[0_0_0_4px_rgba(6,78,47,0.13)]",
+                  error ? "border-[var(--tanaw-error)]" : "border-[var(--tanaw-border)]",
+                )}
+                placeholder="Enter new password"
+                autoComplete="new-password"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-sm font-semibold text-[var(--tanaw-text)]">Confirm password</span>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(event) => onConfirmPasswordChange(event.target.value)}
+                className={cn(
+                  "h-12 w-full rounded-[22px] border bg-white px-4 text-sm outline-none transition focus:border-[var(--tanaw-green)] focus:shadow-[0_0_0_4px_rgba(6,78,47,0.13)]",
+                  error ? "border-[var(--tanaw-error)]" : "border-[var(--tanaw-border)]",
+                )}
+                placeholder="Confirm new password"
+                autoComplete="new-password"
+              />
+            </label>
+          </div>
+          <RecoveryError message={error} />
+          <button type="submit" disabled={isSubmitting} className="mt-4 w-full rounded-[24px] bg-[var(--tanaw-green)] px-4 py-3 font-semibold text-white transition hover:bg-[var(--tanaw-green-dark)] disabled:cursor-not-allowed disabled:opacity-70">
+            {isSubmitting ? "Updating..." : "Reset password"}
+          </button>
+        </form>
+      </RecoveryStepFrame>
     );
   }
 
   return (
-    <form onSubmit={onRequest}>
-      <p className="mb-5 text-sm leading-6 text-[var(--tanaw-muted)]">
-        Enter your registered email. If an account matches, a verification code is recorded in Dev Log for secure recovery.
-      </p>
-      <label htmlFor="desktop-recovery-target" className="mb-2 block text-sm font-semibold text-[var(--tanaw-text)]">
-        Registered email
-      </label>
-      <input
-        id="desktop-recovery-target"
-        type="email"
-        value={email}
-        onChange={(event) => onEmailChange(event.target.value)}
-        className={cn(
-          "h-12 w-full rounded-[22px] border bg-white px-4 text-sm outline-none transition focus:border-[var(--tanaw-green)] focus:shadow-[0_0_0_4px_rgba(6,78,47,0.13)]",
-          error ? "border-[var(--tanaw-error)]" : "border-[var(--tanaw-border)]",
-        )}
-        placeholder="Enter registered email"
-      />
-      <RecoveryError message={error} />
-      <button type="submit" disabled={isSubmitting} className="mt-4 w-full rounded-[24px] bg-[var(--tanaw-green)] px-4 py-3 font-semibold text-white transition hover:bg-[var(--tanaw-green-dark)] disabled:cursor-not-allowed disabled:opacity-70">
-        {isSubmitting ? "Preparing..." : "Continue"}
-      </button>
-    </form>
+    <RecoveryStepFrame key="email" title="Account Recovery">
+      <form onSubmit={onRequest}>
+        <p className="mb-5 text-sm leading-6 text-[var(--tanaw-muted)]">
+          Enter your registered email. If an account matches, a verification code is recorded in Dev Log for secure recovery.
+        </p>
+        <label htmlFor="desktop-recovery-target" className="mb-2 block text-sm font-semibold text-[var(--tanaw-text)]">
+          Registered email
+        </label>
+        <input
+          id="desktop-recovery-target"
+          type="email"
+          value={email}
+          onChange={(event) => onEmailChange(event.target.value)}
+          className={cn(
+            "h-12 w-full rounded-[22px] border bg-white px-4 text-sm outline-none transition focus:border-[var(--tanaw-green)] focus:shadow-[0_0_0_4px_rgba(6,78,47,0.13)]",
+            error ? "border-[var(--tanaw-error)]" : "border-[var(--tanaw-border)]",
+          )}
+          placeholder="Enter registered email"
+        />
+        <RecoveryError message={error} />
+        <button type="submit" disabled={isSubmitting} className="mt-4 w-full rounded-[24px] bg-[var(--tanaw-green)] px-4 py-3 font-semibold text-white transition hover:bg-[var(--tanaw-green-dark)] disabled:cursor-not-allowed disabled:opacity-70">
+          {isSubmitting ? "Preparing..." : "Continue"}
+        </button>
+      </form>
+    </RecoveryStepFrame>
+  );
+}
+
+function RecoveryStepFrame({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18, ease: "easeOut" }}>
+      <div className="mb-5">
+        <p className="text-sm font-bold text-[var(--tanaw-text)]">{title}</p>
+        <span className="mt-2 block h-1 w-12 rounded-full bg-[var(--tanaw-gold)]/75" aria-hidden="true" />
+      </div>
+      {children}
+    </motion.div>
   );
 }
 
@@ -228,6 +248,12 @@ function SupportDialogContent({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onCopy: () => void;
 }) {
+  const hasSupportContact = Boolean(info?.supportEmail || info?.supportPhone);
+  const supportEmailIsUsable = Boolean(info?.supportEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(info.supportEmail));
+  const mailtoHref = supportEmailIsUsable
+    ? `mailto:${info?.supportEmail}?subject=${encodeURIComponent("TANAW login support request")}`
+    : undefined;
+
   return (
     <div>
       <div className="rounded-[40px] border border-[var(--tanaw-border)] bg-[#f8faf8] p-5">
@@ -237,7 +263,15 @@ function SupportDialogContent({
         <p className="text-sm font-semibold text-[var(--tanaw-text)]">{info?.message ?? "Checking support contact..."}</p>
         {info?.supportEmail ? <p className="mt-2 text-sm text-[var(--tanaw-muted)]">Email: {info.supportEmail}</p> : null}
         {info?.supportPhone ? <p className="mt-1 text-sm text-[var(--tanaw-muted)]">Phone: {info.supportPhone}</p> : null}
-        {!info?.supportEmail && !info?.supportPhone ? <p className="mt-2 text-sm leading-6 text-[var(--tanaw-muted)]">No public support contact is configured in this app.</p> : null}
+        {mailtoHref ? (
+          <a
+            href={mailtoHref}
+            className="mt-4 inline-flex items-center gap-2 rounded-[20px] bg-white px-4 py-2 text-sm font-semibold text-[var(--tanaw-green)] shadow-sm ring-1 ring-[var(--tanaw-border)] transition hover:ring-[var(--tanaw-green)]"
+          >
+            Email support
+            <ExternalLink className="h-4 w-4" />
+          </a>
+        ) : null}
       </div>
 
       {submitted ? (
@@ -254,10 +288,12 @@ function SupportDialogContent({
         </form>
       )}
 
-      <button type="button" onClick={onCopy} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[24px] border border-[var(--tanaw-border)] bg-white px-4 py-3 font-semibold text-[var(--tanaw-green)] transition hover:border-[var(--tanaw-green)] hover:shadow-[0_12px_26px_rgba(6,78,47,0.12)]">
-        {copied ? <Check className="h-4 w-4" /> : <Clipboard className="h-4 w-4" />}
-        {copied ? "Copied" : "Copy support contact"}
-      </button>
+      {hasSupportContact ? (
+        <button type="button" onClick={onCopy} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[24px] border border-[var(--tanaw-border)] bg-white px-4 py-3 font-semibold text-[var(--tanaw-green)] transition hover:border-[var(--tanaw-green)] hover:shadow-[0_12px_26px_rgba(6,78,47,0.12)]">
+          {copied ? <Check className="h-4 w-4" /> : <Clipboard className="h-4 w-4" />}
+          {copied ? "Copied" : "Copy support contact"}
+        </button>
+      ) : null}
     </div>
   );
 }
