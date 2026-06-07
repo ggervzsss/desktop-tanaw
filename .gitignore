@@ -29,3 +29,6 @@ __pycache__/
 *.njsproj
 *.sln
 *.sw?
+
+# Personal files
+-docs
