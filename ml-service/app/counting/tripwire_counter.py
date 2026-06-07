@@ -84,8 +84,12 @@ class TripwireCounter:
             self._refresh_stable_sides(state, current_sides)
             return None
 
-        crossed_line = self._crossed_line(state, current_sides)
-        direction = self._direction_for_crossing(state, crossed_line, previous, point)
+        crossed_lines = self._crossed_lines(state, current_sides, previous, point, lines, frame_width, frame_height)
+        direction = None
+        for crossed_line in crossed_lines:
+            direction = self._direction_for_crossing(state, crossed_line, previous, point)
+            if direction is not None:
+                break
         self._refresh_stable_sides(state, current_sides)
 
         if direction is None:
@@ -121,7 +125,17 @@ class TripwireCounter:
         position = self.line_x(frame_width) / max(frame_width, 1)
         return {"main": ((position, 0.0), (position, 1.0))}
 
-    def _crossed_line(self, state: TrackState, current_sides: dict[str, int]) -> str | None:
+    def _crossed_lines(
+        self,
+        state: TrackState,
+        current_sides: dict[str, int],
+        previous: Centroid,
+        current: Centroid,
+        lines: dict[str, NormalizedLine],
+        frame_width: int,
+        frame_height: int,
+    ) -> list[str]:
+        crossed: list[tuple[float, str]] = []
         for line_id, current_side in current_sides.items():
             if current_side == 0:
                 continue
@@ -133,9 +147,9 @@ class TripwireCounter:
             if previous_side == current_side:
                 continue
 
-            return line_id
+            crossed.append((_crossing_progress(previous, current, lines[line_id], frame_width, frame_height), line_id))
 
-        return None
+        return [line_id for _, line_id in sorted(crossed)]
 
     def _direction_for_crossing(self, state: TrackState, crossed_line: str | None, previous: Centroid, current: Centroid) -> str | None:
         if crossed_line is None:
@@ -201,6 +215,17 @@ def _signed_line_distance(point: tuple[float, float], line_start: tuple[float, f
 
 def _distance(first: Centroid, second: Centroid) -> float:
     return hypot(second.x - first.x, second.y - first.y)
+
+
+def _crossing_progress(previous: Centroid, current: Centroid, line: NormalizedLine, frame_width: int, frame_height: int) -> float:
+    line_start, line_end = _scale_line(line, frame_width, frame_height)
+    previous_distance = _signed_line_distance((previous.x, previous.y), line_start, line_end)
+    current_distance = _signed_line_distance((current.x, current.y), line_start, line_end)
+    denominator = previous_distance - current_distance
+    if abs(denominator) < 1e-9:
+        return 1.0
+
+    return min(1.0, max(0.0, previous_distance / denominator))
 
 
 def _scale_line(line: NormalizedLine, frame_width: int, frame_height: int) -> tuple[tuple[float, float], tuple[float, float]]:

@@ -80,6 +80,34 @@ class TripwireCounterTest(unittest.TestCase):
         self.assertEqual(counter.counts.exit, 0)
         self.assertEqual(counter.counts.occupancy, 1)
 
+    def test_fast_crossing_over_both_paired_lines_counts_exit(self) -> None:
+        counter = TripwireCounter(
+            entry_line=((0.35, 0.0), (0.35, 1.0)),
+            exit_line=((0.65, 0.0), (0.65, 1.0)),
+        )
+        counter.reset()
+
+        self._update(counter, 3, 50, 80)
+        self._update(counter, 3, 150, 80, expected="exit")
+
+        self.assertEqual(counter.counts.entry, 0)
+        self.assertEqual(counter.counts.exit, 1)
+        self.assertEqual(counter.counts.occupancy, 0)
+
+    def test_fast_crossing_over_both_paired_lines_counts_entry(self) -> None:
+        counter = TripwireCounter(
+            entry_line=((0.35, 0.0), (0.35, 1.0)),
+            exit_line=((0.65, 0.0), (0.65, 1.0)),
+        )
+        counter.reset()
+
+        self._update(counter, 4, 150, 80)
+        self._update(counter, 4, 50, 80, expected="entry")
+
+        self.assertEqual(counter.counts.entry, 1)
+        self.assertEqual(counter.counts.exit, 0)
+        self.assertEqual(counter.counts.occupancy, 1)
+
     def test_stale_track_can_count_again_after_ttl(self) -> None:
         counter = TripwireCounter(tripwire_position=0.5, track_ttl_frames=2)
         counter.reset()
