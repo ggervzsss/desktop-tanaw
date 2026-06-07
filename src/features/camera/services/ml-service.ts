@@ -16,6 +16,16 @@ export type MlHealth = {
   model_loading: boolean;
   device: string | null;
   model_path: string | null;
+  reid_model_loaded: boolean;
+  reid_model_ready: boolean;
+  reid_model_loading: boolean;
+  reid_status: string | null;
+  reid_model_path: string | null;
+  reid_error: string | null;
+  reid_average_inference_ms: number | null;
+  reid_gallery_size: number;
+  reid_business_date: string | null;
+  reid_last_cleanup_at: string | null;
 };
 
 export type MlCounts = {
@@ -34,6 +44,13 @@ export type MlDetectionTrack = {
   confidence: number;
   centroid: [number, number];
   direction: string | null;
+  visitor_id: string | null;
+  is_unique_entry: boolean | null;
+  reid_score: number | null;
+  reid_decision: string | null;
+  identity_confidence: string | null;
+  inside_roi: boolean | null;
+  counting_eligible: boolean | null;
 };
 
 export type MlDetections = {
@@ -188,13 +205,17 @@ export async function startCameraProcessing(baseUrl: string, camera: Camera): Pr
         camera_type: camera.cameraType,
         confidence: camera.confidence,
         entry_line: toMlTripwireLine(camera.config.tripwires.entry),
+        event_cooldown_seconds: 3.6,
         exit_line: toMlTripwireLine(camera.config.tripwires.exit),
         max_frame_width: 640,
+        paired_line_max_gap_seconds: 18,
         password: camera.password || null,
         processing_fps: 5,
         reverse_direction: camera.config.reverse,
+        roi: toMlRoi(camera.config.roi),
         stream_fps: 24,
         stream_url: camera.rtsp,
+        track_ttl_seconds: 9,
         tripwire_position: camera.config.tripwire / 100,
         username: camera.username || null,
       }),
@@ -227,6 +248,15 @@ function toMlTripwireLine(line: Camera["config"]["tripwires"]["entry"]) {
   return {
     start: { x: line.start.x / 100, y: line.start.y / 100 },
     end: { x: line.end.x / 100, y: line.end.y / 100 },
+  };
+}
+
+function toMlRoi(roi: Camera["config"]["roi"]) {
+  return {
+    top: roi.top / 100,
+    left: roi.left / 100,
+    width: roi.width / 100,
+    height: roi.height / 100,
   };
 }
 

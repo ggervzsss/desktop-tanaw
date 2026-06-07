@@ -1,7 +1,7 @@
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 
 os.environ.setdefault("OPENCV_FFMPEG_LOGLEVEL", "16")
@@ -22,7 +22,10 @@ from app.camera.stream_reader import (
 from app.camera.auth import build_authenticated_stream_url, redact_stream_credentials
 from app.config.camera_config import CameraStartRequest
 from app.counting.tripwire_counter import TripwireCounter
+from app.counting.geometry import Centroid
 from app.detection.yolo_detector import YoloPersonTracker
+from app.identity import UniqueVisitorRegistry, VisitorDecision
+from app.reid import PersonReIdentifier, TrackAppearanceBuffer
 from app.storage.session_store import SessionStore
 
 
@@ -40,6 +43,13 @@ class DisplayTrack:
     confidence: float
     centroid: tuple[int, int]
     direction: str | None = None
+    visitor_id: str | None = None
+    is_unique_entry: bool | None = None
+    reid_score: float | None = None
+    reid_decision: str | None = None
+    identity_confidence: str | None = None
+    inside_roi: bool | None = None
+    counting_eligible: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -68,7 +78,10 @@ class CameraProcessingManager:
         self._config: CameraStartRequest | None = None
         self._counter = TripwireCounter()
         self._tracker = YoloPersonTracker()
+        self._reidentifier = PersonReIdentifier()
+        self._appearance_buffer = TrackAppearanceBuffer()
         self._session_store = SessionStore()
+        self._visitor_registry = UniqueVisitorRegistry(self._session_store, model_name=self._reidentifier.model_name)
         self._session_updated_at: str | None = None
         self._restoring_session = False
 
@@ -99,8 +112,14 @@ class CameraProcessingManager:
                 entry_line=self._normalized_line(config.entry_line),
                 exit_line=self._normalized_line(config.exit_line),
                 reverse_direction=config.reverse_direction,
+                event_cooldown_frames=_seconds_to_frames(config.event_cooldown_seconds, config.processing_fps),
+                paired_line_max_gap_frames=_seconds_to_frames(config.paired_line_max_gap_seconds, config.processing_fps),
+                track_ttl_frames=_seconds_to_frames(config.track_ttl_seconds, config.processing_fps),
             )
             self._counter.reset()
+            self._appearance_buffer = TrackAppearanceBuffer()
+            self._visitor_registry.prepare(config.camera_id)
+            self._visitor_registry.reset_session_tracks()
             self._latest_jpeg = self._build_status_frame("Initializing ML model...")
             self._latest_stream_jpeg = self._latest_jpeg
             self._latest_stream_frame_id += 1
@@ -109,6 +128,7 @@ class CameraProcessingManager:
 
         try:
             self._tracker.warmup()
+            self._reidentifier.warmup()
         except Exception as exc:
             safe_message = redact_stream_credentials(f"Unable to initialize ML model: {exc}")
             with self._raw_frame_condition:
@@ -195,6 +215,13 @@ class CameraProcessingManager:
                         "confidence": track.confidence,
                         "centroid": track.centroid,
                         "direction": track.direction,
+                        "visitor_id": track.visitor_id,
+                        "is_unique_entry": track.is_unique_entry,
+                        "reid_score": track.reid_score,
+                        "reid_decision": track.reid_decision,
+                        "identity_confidence": track.identity_confidence,
+                        "inside_roi": track.inside_roi,
+                        "counting_eligible": track.counting_eligible,
                     }
                     for track in self._latest_tracks
                 ],
@@ -217,11 +244,17 @@ class CameraProcessingManager:
     def metrics_summary(self, include_submitted: bool = False) -> dict:
         return self._session_store.metrics_summary(include_submitted=include_submitted)
 
-    def model_status(self) -> dict[str, bool | str | None]:
-        return self._tracker.status()
+    def model_status(self) -> dict:
+        return {
+            **self._tracker.status(),
+            **self._reidentifier.status(),
+            **self._visitor_registry.status(),
+        }
 
     def record_report_submission(self, report_id: str, period: str, notes: str | None = None, payload: dict | None = None) -> dict:
-        return self._session_store.record_report_submission(report_id=report_id, period=period, notes=notes, payload=payload)
+        submission = self._session_store.record_report_submission(report_id=report_id, period=period, notes=notes, payload=payload)
+        self._visitor_registry.cleanup_expired()
+        return submission
 
     def restore_last_session(self) -> bool:
         if self.running or self._restoring_session:
@@ -417,10 +450,15 @@ class CameraProcessingManager:
 
         last_processed_frame_id = 0
         frame_interval = 1.0 / max(config.processing_fps, 1.0)
+        last_cleanup_at = time.monotonic()
 
         try:
             self._tracker.warmup()
             while not session.stop_event.is_set() and self._is_current_session(session):
+                if time.monotonic() - last_cleanup_at >= 3600:
+                    self._visitor_registry.cleanup_expired()
+                    last_cleanup_at = time.monotonic()
+
                 frame, frame_id = self._wait_for_latest_frame(session, last_processed_frame_id)
                 if frame is None:
                     continue
@@ -470,6 +508,7 @@ class CameraProcessingManager:
                     tripwire_position,
                     entry_line,
                     exit_line,
+                    roi,
                     reverse_direction,
                     entry_count,
                     exit_count,
@@ -477,7 +516,7 @@ class CameraProcessingManager:
                 ) = frame_snapshot
 
                 started_at = time.monotonic()
-                display_frame = self._render_display_frame(frame, tracks, tripwire_position, entry_line, exit_line, reverse_direction, entry_count, exit_count, occupancy_count)
+                display_frame = self._render_display_frame(frame, tracks, tripwire_position, entry_line, exit_line, roi, reverse_direction, entry_count, exit_count, occupancy_count)
                 encoded = self._encode_frame(display_frame)
 
                 with self._raw_frame_condition:
@@ -513,6 +552,7 @@ class CameraProcessingManager:
                 self._counter.tripwire_position,
                 self._counter.entry_line,
                 self._counter.exit_line,
+                session.config.roi,
                 self._counter.reverse_direction,
                 counts.entry,
                 counts.exit,
@@ -539,14 +579,22 @@ class CameraProcessingManager:
 
         display_tracks: list[DisplayTrack] = []
         self._counter.begin_frame()
+        self._appearance_buffer.begin_frame(self._counter.frame_index)
 
         for track in tracks:
             if not self._is_current_session(session):
                 return []
 
-            direction = self._counter.update(track.track_id, track.counting_point, frame_width, frame_height) if track.track_id > 0 else None
+            inside_roi = self._point_inside_roi(track.counting_point, frame_width, frame_height, session.config)
+            counting_eligible = track.track_id > 0 and inside_roi
+            if counting_eligible:
+                self._collect_track_embedding(frame, track, frame_width, frame_height)
+            direction = self._counter.update(track.track_id, track.counting_point, frame_width, frame_height) if counting_eligible else None
+            visitor_decision = None
             if direction is not None:
-                self._persist_count_event(session, track.track_id, direction)
+                if direction == "entry":
+                    visitor_decision = self._resolve_unique_entry(session, frame, track)
+                self._persist_count_event(session, track.track_id, direction, visitor_decision)
             display_tracks.append(
                 DisplayTrack(
                     track_id=track.track_id,
@@ -554,10 +602,63 @@ class CameraProcessingManager:
                     confidence=track.confidence,
                     centroid=(int(track.centroid.x), int(track.centroid.y)),
                     direction=direction,
+                    visitor_id=visitor_decision.visitor_id if visitor_decision else None,
+                    is_unique_entry=visitor_decision.is_unique_entry if visitor_decision else None,
+                    reid_score=visitor_decision.reid_score if visitor_decision else None,
+                    reid_decision=visitor_decision.reid_decision if visitor_decision else None,
+                    identity_confidence=visitor_decision.identity_confidence if visitor_decision else None,
+                    inside_roi=inside_roi,
+                    counting_eligible=counting_eligible,
                 )
             )
 
         return display_tracks
+
+    def _point_inside_roi(self, point: Centroid, frame_width: int, frame_height: int, config: CameraStartRequest) -> bool:
+        roi = config.roi
+        x = point.x / max(frame_width, 1)
+        y = point.y / max(frame_height, 1)
+        return roi.left <= x <= roi.left + roi.width and roi.top <= y <= roi.top + roi.height
+
+    def _collect_track_embedding(self, frame, track, frame_width: int, frame_height: int) -> None:
+        if not self._appearance_buffer.should_sample(track, frame_width, frame_height, self._counter.frame_index):
+            return
+
+        result = self._reidentifier.embed(frame, track.bbox)
+        if result is None:
+            return
+
+        quality = self._appearance_buffer.quality_score(track, frame_width, frame_height)
+        self._appearance_buffer.record_sample(track.track_id, result.embedding, quality, self._counter.frame_index)
+
+    def _resolve_unique_entry(self, session: ProcessingSession, frame, track) -> VisitorDecision:
+        embedding = self._appearance_buffer.embedding_for_track(track.track_id)
+        if embedding is None:
+            result = self._reidentifier.embed(frame, track.bbox)
+            if result is not None:
+                embedding = result.embedding
+                self._appearance_buffer.record_sample(track.track_id, result.embedding, track.confidence, self._counter.frame_index)
+
+        with self._lock:
+            camera_id = self._config.camera_id if self._config else None
+
+        if not self._is_current_session(session):
+            return VisitorDecision(
+                visitor_id=None,
+                is_unique_entry=True,
+                reid_score=None,
+                reid_decision="stale_session",
+                identity_confidence="degraded",
+                business_date=self._visitor_registry.business_date_for(datetime.now(timezone.utc)),
+            )
+
+        return self._visitor_registry.resolve_entry(
+            track_id=track.track_id,
+            camera_id=camera_id,
+            embedding=embedding,
+            detection_confidence=track.confidence,
+            bbox=track.bbox,
+        )
 
     def _render_display_frame(
         self,
@@ -566,12 +667,14 @@ class CameraProcessingManager:
         tripwire_position: float,
         entry_line,
         exit_line,
+        roi,
         reverse_direction: bool,
         entry_count: int,
         exit_count: int,
         occupancy_count: int,
     ):
         height, width = frame.shape[:2]
+        self._draw_roi(frame, roi, width, height)
         if entry_line is not None or exit_line is not None:
             self._draw_tripwire_line(frame, entry_line, width, height, "ENTRY", (74, 222, 128))
             self._draw_tripwire_line(frame, exit_line, width, height, "EXIT", (248, 113, 113))
@@ -601,6 +704,14 @@ class CameraProcessingManager:
         cv2.putText(frame, status, (24, height - 22), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2, cv2.LINE_AA)
 
         return frame
+
+    def _draw_roi(self, frame, roi, frame_width: int, frame_height: int) -> None:
+        x1 = int(roi.left * frame_width)
+        y1 = int(roi.top * frame_height)
+        x2 = int((roi.left + roi.width) * frame_width)
+        y2 = int((roi.top + roi.height) * frame_height)
+        cv2.rectangle(frame, (x1, y1), (x2, y2), (59, 130, 246), 2)
+        cv2.putText(frame, "ROI", (x1 + 8, max(20, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.62, (59, 130, 246), 2, cv2.LINE_AA)
 
     def _draw_tripwire_line(self, frame, line, frame_width: int, frame_height: int, label: str, color: tuple[int, int, int]) -> None:
         if line is None:
@@ -664,12 +775,13 @@ class CameraProcessingManager:
         cv2.putText(frame, message[:72], (90, 288), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (203, 213, 225), 2, cv2.LINE_AA)
         return self._encode_frame(frame)
 
-    def _persist_count_event(self, session: ProcessingSession, track_id: int, direction: str) -> None:
+    def _persist_count_event(self, session: ProcessingSession, track_id: int, direction: str, visitor_decision: VisitorDecision | None = None) -> None:
         with self._lock:
             if not self._is_current_session_locked(session):
                 return
 
             counts = self._counter.counts.as_dict()
+            visitor_fields = visitor_decision.as_event_fields() if visitor_decision else {}
             try:
                 self._session_store.append_event(
                     {
@@ -677,6 +789,7 @@ class CameraProcessingManager:
                         "camera_name": self._config.camera_name if self._config else None,
                         "direction": direction,
                         "track_id": track_id,
+                        **visitor_fields,
                         "counts": counts,
                     }
                 )
@@ -744,3 +857,7 @@ class CameraProcessingManager:
 
 def _safe_int(value) -> int:
     return value if isinstance(value, int) else 0
+
+
+def _seconds_to_frames(seconds: float, processing_fps: float) -> int:
+    return max(1, int(round(seconds * max(processing_fps, 1.0))))

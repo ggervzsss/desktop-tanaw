@@ -1,11 +1,17 @@
 import tempfile
 import threading
 import unittest
+from pathlib import Path
 
 import numpy as np
 
 from app.camera.camera_manager import CameraProcessingManager, ProcessingSession
+from app.counting.geometry import Centroid
+from app.counting.tripwire_counter import TripwireCounter
 from app.config.camera_config import CameraStartRequest
+from app.detection.yolo_detector import TrackResult
+from app.identity import UniqueVisitorRegistry
+from app.reid import PersonReIdentifier, TrackAppearanceBuffer
 from app.storage.session_store import SessionStore
 
 
@@ -52,13 +58,133 @@ class CameraProcessingManagerSessionTest(unittest.TestCase):
             self.assertEqual(manager._state.error, "current failure")
             self.assertTrue(current_session.stop_event.is_set())
 
+    def test_entry_event_gets_unique_visitor_decision(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            manager = _manager_with_store(directory)
+            session = _session(1)
+            manager._tracker = _FakeTracker(
+                [
+                    [_track(1, (50, 20, 90, 180))],
+                    [_track(1, (96, 20, 136, 180))],
+                ]
+            )
+            with manager._lock:
+                manager._config = session.config
+                manager._active_session = session
 
-def _session(session_id: int) -> ProcessingSession:
+            frame = np.zeros((200, 200, 3), dtype=np.uint8)
+            self.assertEqual(manager._detect_and_count(session, frame, 0.35)[0].direction, None)
+            entry_track = manager._detect_and_count(session, frame, 0.35)[0]
+
+            self.assertEqual(entry_track.direction, "entry")
+            self.assertTrue(entry_track.is_unique_entry)
+            self.assertEqual(entry_track.reid_decision, "degraded_no_embedding")
+            summary = manager.metrics_summary()
+            self.assertEqual(summary["entries"], 1)
+            self.assertEqual(summary["unique_count"], 1)
+
+    def test_exit_event_skips_unique_visitor_decision(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            manager = _manager_with_store(directory)
+            session = _session(1)
+            manager._tracker = _FakeTracker(
+                [
+                    [_track(1, (96, 20, 136, 180))],
+                    [_track(1, (50, 20, 90, 180))],
+                ]
+            )
+            with manager._lock:
+                manager._config = session.config
+                manager._active_session = session
+
+            frame = np.zeros((200, 200, 3), dtype=np.uint8)
+            self.assertEqual(manager._detect_and_count(session, frame, 0.35)[0].direction, None)
+            exit_track = manager._detect_and_count(session, frame, 0.35)[0]
+
+            self.assertEqual(exit_track.direction, "exit")
+            self.assertIsNone(exit_track.is_unique_entry)
+            self.assertIsNone(exit_track.reid_decision)
+            summary = manager.metrics_summary()
+            self.assertEqual(summary["exits"], 1)
+            self.assertEqual(summary["unique_count"], 0)
+
+    def test_track_outside_roi_is_not_counted_or_sampled_for_reid(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            manager = _manager_with_store(directory)
+            session = _session(1, roi={"top": 0.1, "left": 0.65, "width": 0.25, "height": 0.8})
+            reidentifier = _SpyReIdentifier()
+            manager._reidentifier = reidentifier
+            manager._tracker = _FakeTracker(
+                [
+                    [_track(1, (50, 20, 90, 180))],
+                    [_track(1, (96, 20, 136, 180))],
+                ]
+            )
+            with manager._lock:
+                manager._config = session.config
+                manager._active_session = session
+
+            frame = np.zeros((200, 200, 3), dtype=np.uint8)
+            first_track = manager._detect_and_count(session, frame, 0.35)[0]
+            second_track = manager._detect_and_count(session, frame, 0.35)[0]
+
+            self.assertFalse(first_track.inside_roi)
+            self.assertFalse(first_track.counting_eligible)
+            self.assertFalse(second_track.inside_roi)
+            self.assertFalse(second_track.counting_eligible)
+            self.assertIsNone(second_track.direction)
+            self.assertEqual(reidentifier.embed_calls, 0)
+            summary = manager.metrics_summary()
+            self.assertEqual(summary["entries"], 0)
+            self.assertEqual(summary["exits"], 0)
+            self.assertEqual(summary["unique_count"], 0)
+
+
+def _session(session_id: int, **config_values) -> ProcessingSession:
     return ProcessingSession(
         session_id=session_id,
-        config=CameraStartRequest(stream_url="000"),
+        config=CameraStartRequest(stream_url="000", **config_values),
         stop_event=threading.Event(),
     )
+
+
+def _manager_with_store(directory: str) -> CameraProcessingManager:
+    manager = CameraProcessingManager()
+    manager._session_store = SessionStore(str(Path(directory)))
+    manager._visitor_registry = UniqueVisitorRegistry(manager._session_store, model_name="test")
+    manager._reidentifier = PersonReIdentifier(model_path=str(Path(directory) / "missing.onnx"))
+    manager._appearance_buffer = TrackAppearanceBuffer()
+    manager._counter = TripwireCounter(tripwire_position=0.5)
+    manager._counter.reset()
+    return manager
+
+
+def _track(track_id: int, bbox: tuple[int, int, int, int]) -> TrackResult:
+    x1, y1, x2, y2 = bbox
+    return TrackResult(
+        track_id=track_id,
+        bbox=bbox,
+        confidence=0.9,
+        centroid=Centroid((x1 + x2) / 2, (y1 + y2) / 2),
+        counting_point=Centroid((x1 + x2) / 2, y2),
+    )
+
+
+class _FakeTracker:
+    def __init__(self, responses: list[list[TrackResult]]) -> None:
+        self._responses = responses
+
+    def track_people(self, frame, confidence: float) -> list[TrackResult]:
+        return self._responses.pop(0)
+
+
+class _SpyReIdentifier:
+    def __init__(self) -> None:
+        self.embed_calls = 0
+
+    def embed(self, frame, bbox):
+        self.embed_calls += 1
+        return None
 
 
 if __name__ == "__main__":

@@ -17,6 +17,18 @@ const roiFields = [
 
 export function CameraEditControls({ editForm, onEditFormChange }: CameraEditControlsProps) {
   const isRtspCamera = editForm.cameraType === "RTSP_CCTV" || editForm.cameraType === "ONVIF_CCTV";
+  const updateRoi = (key: keyof Camera["config"]["roi"], value: number) => {
+    onEditFormChange({
+      ...editForm,
+      config: {
+        ...editForm.config,
+        roi: clampRoi({
+          ...editForm.config.roi,
+          [key]: value,
+        }, key),
+      },
+    });
+  };
 
   return (
     <div className="grid grid-cols-1 gap-6 rounded-sm border border-gray-200 bg-white p-4 shadow-inner md:grid-cols-2">
@@ -98,18 +110,7 @@ export function CameraEditControls({ editForm, onEditFormChange }: CameraEditCon
                 min={min}
                 max={max}
                 value={editForm.config.roi[key]}
-                onChange={(event) =>
-                  onEditFormChange({
-                    ...editForm,
-                    config: {
-                      ...editForm.config,
-                      roi: {
-                        ...editForm.config.roi,
-                        [key]: parseInt(event.target.value, 10),
-                      },
-                    },
-                  })
-                }
+                onChange={(event) => updateRoi(key, parseInt(event.target.value, 10))}
                 className="w-full accent-[#2d5eff]"
               />
             </div>
@@ -118,4 +119,35 @@ export function CameraEditControls({ editForm, onEditFormChange }: CameraEditCon
       </div>
     </div>
   );
+}
+
+function clampRoi(roi: Camera["config"]["roi"], changedKey: keyof Camera["config"]["roi"]) {
+  const next = {
+    top: clampNumber(roi.top, 0, 100),
+    left: clampNumber(roi.left, 0, 100),
+    width: clampNumber(roi.width, 20, 100),
+    height: clampNumber(roi.height, 20, 100),
+  };
+
+  if (next.left + next.width > 100) {
+    if (changedKey === "left") {
+      next.left = Math.max(0, 100 - next.width);
+    } else {
+      next.width = Math.max(20, 100 - next.left);
+    }
+  }
+  if (next.top + next.height > 100) {
+    if (changedKey === "top") {
+      next.top = Math.max(0, 100 - next.height);
+    } else {
+      next.height = Math.max(20, 100 - next.top);
+    }
+  }
+
+  return next;
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, value));
 }

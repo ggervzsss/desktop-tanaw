@@ -1,4 +1,4 @@
-import { Activity, LogIn, LogOut, Play, RefreshCw, Square, Users, Wifi } from "lucide-react";
+import { Activity, Cpu, LogIn, LogOut, Play, RefreshCw, Square, Users, Wifi } from "lucide-react";
 import type { Camera } from "../../../types/enterprise";
 import type { MlCounts, MlHealth, MlServiceStatus } from "../services/ml-service";
 
@@ -39,6 +39,8 @@ export function CameraMonitoringPanel({
   const serviceOnline = health?.status === "ok";
   const serviceLabel = serviceOnline ? (health.running ? "ML Service Running" : "ML Service Ready") : "ML Service Offline";
   const cameraLabel = isProcessingThisCamera ? "Processing" : activeCam.status === "online" ? "Verified" : activeCam.status === "untested" ? "Untested" : "Stopped";
+  const reidLabel = health?.reid_status === "ready" ? `Unique ReID ${health.reid_gallery_size}` : health?.reid_status === "degraded" ? "Unique ReID Degraded" : health?.reid_model_loading ? "Unique ReID Loading" : "Unique ReID Pending";
+  const reidTone = health?.reid_status === "ready" ? "ok" : health?.reid_status === "degraded" ? "neutral" : "neutral";
 
   return (
     <div className="mb-5 space-y-4">
@@ -52,6 +54,7 @@ export function CameraMonitoringPanel({
         <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
           <StatusPill icon={Activity} label={serviceLabel} tone={serviceOnline ? "ok" : "error"} />
           <StatusPill icon={Wifi} label={`Camera ${cameraLabel}`} tone={isProcessingThisCamera || activeCam.status === "online" ? "ok" : activeCam.status === "error" || activeCam.status === "offline" ? "error" : "neutral"} />
+          {health && <StatusPill icon={Cpu} label={reidLabel} tone={reidTone} />}
           {serviceStatus?.pid && <span className="rounded-sm border border-gray-200 bg-gray-50 px-2 py-1 text-gray-500">PID {serviceStatus.pid}</span>}
         </div>
 

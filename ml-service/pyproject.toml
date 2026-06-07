@@ -7,8 +7,18 @@ requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.136.3",
     "numpy>=2.4.6",
+    "onnxruntime>=1.20",
     "opencv-python>=4.13.0.92",
     "pydantic>=2.13.4",
     "ultralytics>=8.4.60",
     "uvicorn>=0.49.0",
+]
+
+[dependency-groups]
+export = [
+    "gdown>=6.1.0",
+    "onnx>=1.21.0",
+    "onnxscript>=0.7.0",
+    "tensorboard>=2.20.0",
+    "torchreid>=0.2.5",
 ]

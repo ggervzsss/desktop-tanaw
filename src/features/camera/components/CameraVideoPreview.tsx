@@ -99,15 +99,17 @@ export function CameraVideoPreview({ activeCam, detections, editForm, isProcessi
             const width = Math.max(0, right - left);
             const height = Math.max(0, bottom - top);
             const isCrossing = track.direction === "entry" || track.direction === "exit";
+            const isOutsideRoi = track.inside_roi === false;
             const label = track.track_id > 0 ? `ID ${track.track_id}` : "PERSON";
+            const tone = getTrackTone(isOutsideRoi, isCrossing);
 
             return (
               <div
                 key={track.track_id}
-                className={`absolute border-2 shadow-[0_0_10px_rgba(34,197,94,0.35)] ${isCrossing ? "border-yellow-300" : "border-emerald-400"}`}
+                className={`absolute border-2 ${tone.boxClass}`}
                 style={{ height: `${height}%`, left: `${left}%`, top: `${top}%`, width: `${width}%` }}
               >
-                <span className={`absolute -top-6 left-0 rounded-sm px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap text-black ${isCrossing ? "bg-yellow-300" : "bg-emerald-400"}`}>
+                <span className={`absolute -top-6 left-0 rounded-sm px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap text-black ${tone.labelClass}`}>
                   {label} {(track.confidence * 100).toFixed(0)}%
                 </span>
               </div>
@@ -134,4 +136,25 @@ export function CameraVideoPreview({ activeCam, detections, editForm, isProcessi
 function clampPercent(value: number) {
   if (!Number.isFinite(value)) return 0;
   return Math.min(100, Math.max(0, value));
+}
+
+function getTrackTone(isOutsideRoi: boolean, isCrossing: boolean) {
+  if (isOutsideRoi) {
+    return {
+      boxClass: "border-slate-300 shadow-[0_0_10px_rgba(148,163,184,0.3)]",
+      labelClass: "bg-slate-300",
+    };
+  }
+
+  if (isCrossing) {
+    return {
+      boxClass: "border-yellow-300 shadow-[0_0_10px_rgba(250,204,21,0.45)]",
+      labelClass: "bg-yellow-300",
+    };
+  }
+
+  return {
+    boxClass: "border-emerald-400 shadow-[0_0_10px_rgba(34,197,94,0.35)]",
+    labelClass: "bg-emerald-400",
+  };
 }

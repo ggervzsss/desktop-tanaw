@@ -23,6 +23,10 @@ class LocalMetricsStore:
         event_id = str(uuid4())
         recorded_at = recorded_at or _utc_now()
         counts = payload.get("counts") if isinstance(payload.get("counts"), dict) else {}
+        direction = payload.get("direction")
+        is_unique_entry = payload.get("is_unique_entry")
+        if is_unique_entry is None:
+            is_unique_entry = direction == "entry"
 
         with self._connection() as connection:
             connection.execute(
@@ -37,25 +41,178 @@ class LocalMetricsStore:
                     entry_count,
                     exit_count,
                     occupancy_count,
+                    visitor_id,
+                    is_unique_entry,
+                    reid_score,
+                    reid_decision,
+                    identity_confidence,
                     payload_json
                 )
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     event_id,
                     recorded_at,
                     payload.get("camera_id"),
                     payload.get("camera_name"),
-                    payload.get("direction"),
+                    direction,
                     payload.get("track_id"),
                     _safe_int(counts.get("entry")),
                     _safe_int(counts.get("exit")),
                     _safe_int(counts.get("occupancy")),
+                    payload.get("visitor_id"),
+                    1 if is_unique_entry else 0,
+                    _safe_float(payload.get("reid_score")),
+                    payload.get("reid_decision"),
+                    payload.get("identity_confidence"),
                     json.dumps(payload, sort_keys=True),
                 ),
             )
 
         return event_id
+
+    def upsert_visitor_identity(
+        self,
+        *,
+        visitor_id: str,
+        business_date: str,
+        camera_id: int | None,
+        embedding: bytes,
+        embedding_dim: int,
+        embedding_count: int,
+        model_name: str,
+        expires_at: str,
+        recorded_at: str | None = None,
+    ) -> None:
+        recorded_at = recorded_at or _utc_now()
+        with self._connection() as connection:
+            connection.execute(
+                """
+                insert into visitor_identities (
+                    visitor_id,
+                    business_date,
+                    camera_id,
+                    first_seen_at,
+                    last_seen_at,
+                    representative_embedding,
+                    embedding_dim,
+                    embedding_count,
+                    model_name,
+                    expires_at
+                )
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                on conflict(visitor_id) do update set
+                    last_seen_at = excluded.last_seen_at,
+                    representative_embedding = excluded.representative_embedding,
+                    embedding_dim = excluded.embedding_dim,
+                    embedding_count = excluded.embedding_count,
+                    model_name = excluded.model_name,
+                    expires_at = excluded.expires_at
+                """,
+                (
+                    visitor_id,
+                    business_date,
+                    camera_id,
+                    recorded_at,
+                    recorded_at,
+                    embedding,
+                    embedding_dim,
+                    embedding_count,
+                    model_name,
+                    expires_at,
+                ),
+            )
+
+    def append_visitor_sighting(self, payload: dict[str, Any], recorded_at: str | None = None) -> str:
+        sighting_id = str(uuid4())
+        recorded_at = recorded_at or _utc_now()
+        with self._connection() as connection:
+            connection.execute(
+                """
+                insert into visitor_sightings (
+                    sighting_id,
+                    visitor_id,
+                    recorded_at,
+                    business_date,
+                    camera_id,
+                    track_id,
+                    direction,
+                    reid_score,
+                    reid_decision,
+                    identity_confidence,
+                    detection_confidence,
+                    bbox_json,
+                    payload_json
+                )
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    sighting_id,
+                    payload["visitor_id"],
+                    recorded_at,
+                    payload["business_date"],
+                    payload.get("camera_id"),
+                    payload.get("track_id"),
+                    payload.get("direction"),
+                    _safe_float(payload.get("reid_score")),
+                    payload["reid_decision"],
+                    payload["identity_confidence"],
+                    _safe_float(payload.get("detection_confidence")),
+                    json.dumps(payload.get("bbox"), sort_keys=True) if payload.get("bbox") is not None else None,
+                    json.dumps(payload, sort_keys=True),
+                ),
+            )
+
+        return sighting_id
+
+    def load_active_visitor_identities(self, business_date: str, now: str | None = None) -> list[dict[str, Any]]:
+        now = now or _utc_now()
+        with self._connection() as connection:
+            rows = connection.execute(
+                """
+                select
+                    visitor_id,
+                    business_date,
+                    camera_id,
+                    first_seen_at,
+                    last_seen_at,
+                    representative_embedding,
+                    embedding_dim,
+                    embedding_count,
+                    model_name,
+                    expires_at
+                from visitor_identities
+                where business_date = ?
+                    and expires_at > ?
+                order by last_seen_at desc
+                """,
+                (business_date, now),
+            ).fetchall()
+
+        return [dict(row) for row in rows]
+
+    def cleanup_expired_visitor_metadata(self, now: str | None = None) -> int:
+        now = now or _utc_now()
+        with self._connection() as connection:
+            visitor_ids = [
+                row["visitor_id"]
+                for row in connection.execute(
+                    """
+                    select visitor_id
+                    from visitor_identities
+                    where expires_at <= ?
+                    """,
+                    (now,),
+                ).fetchall()
+            ]
+            if not visitor_ids:
+                return 0
+
+            placeholders = ",".join("?" for _ in visitor_ids)
+            connection.execute(f"delete from visitor_sightings where visitor_id in ({placeholders})", visitor_ids)
+            connection.execute(f"delete from visitor_identities where visitor_id in ({placeholders})", visitor_ids)
+
+        return len(visitor_ids)
 
     def save_count_snapshot(self, payload: dict[str, Any], recorded_at: str | None = None) -> None:
         counts = payload.get("counts") if isinstance(payload.get("counts"), dict) else {}
@@ -101,6 +258,7 @@ class LocalMetricsStore:
                     count(*) as total_events,
                     sum(case when direction = 'entry' then 1 else 0 end) as entries,
                     sum(case when direction = 'exit' then 1 else 0 end) as exits,
+                    sum(case when direction = 'entry' and is_unique_entry = 1 then 1 else 0 end) as unique_entries,
                     max(occupancy_count) as peak_occupancy,
                     max(occupancy_count) as current_occupancy,
                     min(recorded_at) as first_event_at,
@@ -120,7 +278,7 @@ class LocalMetricsStore:
             "exits": exits,
             "peak_occupancy": _safe_int(row["peak_occupancy"]),
             "current_occupancy": max(0, entries - exits),
-            "unique_count": entries,
+            "unique_count": _safe_int(row["unique_entries"]),
             "total_events": _safe_int(row["total_events"]),
             "unsubmitted_events": _safe_int(unsubmitted_count),
             "unsynced_events": _safe_int(unsynced_count),
@@ -197,6 +355,7 @@ class LocalMetricsStore:
 
         self._root.mkdir(parents=True, exist_ok=True)
         connection = sqlite3.connect(self._database_path)
+        connection.row_factory = sqlite3.Row
         try:
             connection.executescript(
                 """
@@ -211,6 +370,11 @@ class LocalMetricsStore:
                     entry_count integer not null default 0,
                     exit_count integer not null default 0,
                     occupancy_count integer not null default 0,
+                    visitor_id text,
+                    is_unique_entry integer not null default 0,
+                    reid_score real,
+                    reid_decision text,
+                    identity_confidence text,
                     payload_json text not null,
                     submitted_report_id text,
                     synced_at text
@@ -249,6 +413,56 @@ class LocalMetricsStore:
                     sync_status text not null default 'pending_cloud_sync',
                     synced_at text
                 );
+
+                create table if not exists visitor_identities (
+                    visitor_id text primary key,
+                    business_date text not null,
+                    camera_id integer,
+                    first_seen_at text not null,
+                    last_seen_at text not null,
+                    representative_embedding blob not null,
+                    embedding_dim integer not null,
+                    embedding_count integer not null default 1,
+                    model_name text not null,
+                    expires_at text not null
+                );
+
+                create index if not exists idx_visitor_identities_business_date on visitor_identities(business_date);
+                create index if not exists idx_visitor_identities_expires_at on visitor_identities(expires_at);
+
+                create table if not exists visitor_sightings (
+                    sighting_id text primary key,
+                    visitor_id text not null,
+                    recorded_at text not null,
+                    business_date text not null,
+                    camera_id integer,
+                    track_id integer,
+                    direction text not null check (direction in ('entry', 'exit')),
+                    reid_score real,
+                    reid_decision text not null,
+                    identity_confidence text not null,
+                    detection_confidence real,
+                    bbox_json text,
+                    payload_json text not null,
+                    foreign key (visitor_id) references visitor_identities(visitor_id)
+                );
+
+                create index if not exists idx_visitor_sightings_business_date on visitor_sightings(business_date);
+                """
+            )
+            _ensure_column(connection, "count_events", "visitor_id", "text")
+            _ensure_column(connection, "count_events", "is_unique_entry", "integer not null default 0")
+            _ensure_column(connection, "count_events", "reid_score", "real")
+            _ensure_column(connection, "count_events", "reid_decision", "text")
+            _ensure_column(connection, "count_events", "identity_confidence", "text")
+            connection.execute(
+                """
+                update count_events
+                set is_unique_entry = 1
+                where direction = 'entry'
+                    and reid_decision is null
+                    and (visitor_id is null or visitor_id = '')
+                    and is_unique_entry = 0
                 """
             )
             connection.commit()
@@ -264,3 +478,20 @@ def _utc_now() -> str:
 
 def _safe_int(value: Any) -> int:
     return value if isinstance(value, int) else 0
+
+
+def _safe_float(value: Any) -> float | None:
+    if isinstance(value, int | float):
+        return float(value)
+    return None
+
+
+def _ensure_column(connection: sqlite3.Connection, table_name: str, column_name: str, definition: str) -> None:
+    existing_columns = {
+        row["name"]
+        for row in connection.execute(f"pragma table_info({table_name})").fetchall()
+    }
+    if column_name in existing_columns:
+        return
+
+    connection.execute(f"alter table {table_name} add column {column_name} {definition}")
