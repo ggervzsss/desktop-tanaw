@@ -68,11 +68,12 @@ export function CameraPreviewPanel({
   const isProcessing = processingCameraId === activeCam.id && counts.running;
 
   return (
-    <Card className="flex h-full flex-col overflow-hidden rounded-sm shadow-md">
-      <div className="flex items-center justify-between border-b border-gray-200 bg-white p-4">
-        <h3 className="text-sm font-bold text-[#111827]">
-          Node Config: <span className="text-[#065f46]">{activeCam.name}</span>
-        </h3>
+    <Card className="flex h-full min-h-0 flex-col overflow-hidden rounded-sm shadow-md">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-3">
+        <div className="min-w-0">
+          <h3 className="truncate text-sm font-bold text-[#111827]">{activeCam.name}</h3>
+          <p className="truncate text-[11px] font-medium text-gray-500">{activeCam.zone} / {formatCameraType(activeCam.cameraType)} / {activeCam.status}</p>
+        </div>
         <div className="flex gap-2">
           {isEditMode ? (
             <>
@@ -104,35 +105,54 @@ export function CameraPreviewPanel({
         </div>
       </div>
 
-      <div className="flex flex-1 flex-col bg-gray-50 p-5">
-        <CameraMonitoringPanel
-          activeCam={activeCam}
-          counts={counts}
-          error={error}
-          health={health}
-          isRestartingService={isRestartingService}
-          isStarting={isStarting}
-          isStopping={isStopping}
-          isTesting={isTesting}
-          processingCameraId={processingCameraId}
-          serviceStatus={serviceStatus}
-          onRestartService={onRestartService}
-          onStartProcessing={onStartProcessing}
-          onStopProcessing={onStopProcessing}
-          onTestConnection={onTestConnection}
-        />
-        <CameraVideoPreview
-          activeCam={activeCam}
-          detections={detections}
-          editForm={editForm}
-          isProcessing={isProcessing}
-          isEditMode={isEditMode}
-          onEditFormChange={onEditFormChange}
-          streamUrl={streamUrl}
-        />
-        <CameraValidationWarnings warnings={warnings} />
-        {isEditMode && editForm ? <CameraEditControls editForm={editForm} onEditFormChange={onEditFormChange} /> : <CameraReadOnlyDetails activeCam={activeCam} />}
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(300px,340px)] gap-4 bg-gray-50 p-4 max-xl:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="min-h-0">
+          <CameraVideoPreview
+            activeCam={activeCam}
+            counts={counts}
+            detections={detections}
+            editForm={editForm}
+            health={health}
+            isProcessing={isProcessing}
+            isEditMode={isEditMode}
+            onEditFormChange={onEditFormChange}
+            streamUrl={streamUrl}
+          />
+        </div>
+
+        <aside className="flex min-h-0 flex-col gap-3 overflow-y-auto pr-1">
+          <CameraMonitoringPanel
+            activeCam={activeCam}
+            counts={counts}
+            detections={detections}
+            error={error}
+            health={health}
+            isRestartingService={isRestartingService}
+            isStarting={isStarting}
+            isStopping={isStopping}
+            isTesting={isTesting}
+            processingCameraId={processingCameraId}
+            serviceStatus={serviceStatus}
+            onRestartService={onRestartService}
+            onStartProcessing={onStartProcessing}
+            onStopProcessing={onStopProcessing}
+            onTestConnection={onTestConnection}
+          />
+          <CameraValidationWarnings warnings={warnings} />
+          {isEditMode && editForm ? <CameraEditControls editForm={editForm} onEditFormChange={onEditFormChange} /> : <CameraReadOnlyDetails activeCam={activeCam} />}
+        </aside>
       </div>
     </Card>
   );
+}
+
+function formatCameraType(cameraType: Camera["cameraType"]) {
+  const labels: Record<Camera["cameraType"], string> = {
+    IP_WEBCAM: "IP Webcam",
+    ONVIF_CCTV: "ONVIF CCTV",
+    RTSP_CCTV: "RTSP CCTV",
+    USB_WEBCAM: "USB Webcam",
+  };
+
+  return labels[cameraType];
 }

@@ -397,7 +397,7 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
   }, []);
 
   return (
-    <div className="animate-in fade-in space-y-6 font-['Inter'] duration-500">
+    <div className="animate-in fade-in flex h-full min-h-0 flex-col overflow-hidden font-['Inter'] duration-500">
       {showAddModal && <CameraAddModal newCam={newCam} isValidating={isValidating} errors={cameraFormErrors} onClose={closeAddModal} onSubmit={handleAddCamera} onChange={handleNewCameraChange} />}
       {cameraPendingDelete && (
         <ConfirmationDialog
@@ -414,24 +414,24 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
         </ConfirmationDialog>
       )}
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-[#111827]">Camera Integration & Counting</h2>
-          <p className="mt-1 text-sm text-gray-500">Configure IP Webcam streams, run local YOLOv8 processing, and monitor tripwire counts.</p>
+      <div className="mb-3 flex shrink-0 items-center justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="truncate text-xl font-bold tracking-tight text-[#111827]">Camera Setup</h2>
+          <p className="truncate text-xs font-medium text-gray-500">Local CCTV stream verification, AI counting, and tripwire calibration.</p>
         </div>
         <button
           onClick={() => {
             setCameraFormErrors({});
             setShowAddModal(true);
           }}
-          className="flex items-center gap-2 rounded-sm bg-[#065f46] px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#044a36]"
+          className="flex shrink-0 items-center gap-2 rounded-sm bg-[#065f46] px-3 py-2 text-xs font-bold text-white shadow-sm transition-colors hover:bg-[#044a36]"
         >
           <Plus size={16} /> Add Camera Node
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="space-y-4 lg:col-span-1">
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(210px,240px)_minmax(0,1fr)] gap-4 max-lg:grid-cols-[minmax(190px,220px)_minmax(0,1fr)]">
+        <div className="min-h-0">
           <CameraList
             cameras={cameras}
             activeCamId={activeCamId}
@@ -442,7 +442,7 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
           />
         </div>
 
-        <div className="lg:col-span-2">
+        <div className="min-h-0">
           <CameraPreviewPanel
             activeCam={activeCam}
             counts={counts}

@@ -1,10 +1,11 @@
 import { Activity, Cpu, LogIn, LogOut, Play, RefreshCw, Square, Users, Wifi } from "lucide-react";
 import type { Camera } from "../../../types/enterprise";
-import type { MlCounts, MlHealth, MlServiceStatus } from "../services/ml-service";
+import type { MlCounts, MlDetections, MlHealth, MlServiceStatus } from "../services/ml-service";
 
 type CameraMonitoringPanelProps = {
   activeCam: Camera;
   counts: MlCounts;
+  detections: MlDetections;
   health: MlHealth | null;
   processingCameraId: number | null;
   serviceStatus: MlServiceStatus | null;
@@ -22,6 +23,7 @@ type CameraMonitoringPanelProps = {
 export function CameraMonitoringPanel({
   activeCam,
   counts,
+  detections,
   health,
   processingCameraId,
   serviceStatus,
@@ -40,30 +42,43 @@ export function CameraMonitoringPanel({
   const serviceLabel = serviceOnline ? (health.running ? "ML Service Running" : "ML Service Ready") : "ML Service Offline";
   const cameraLabel = isProcessingThisCamera ? "Processing" : activeCam.status === "online" ? "Verified" : activeCam.status === "untested" ? "Untested" : "Stopped";
   const reidLabel = health?.reid_status === "ready" ? `Unique ReID ${health.reid_gallery_size}` : health?.reid_status === "degraded" ? "Unique ReID Degraded" : health?.reid_model_loading ? "Unique ReID Loading" : "Unique ReID Pending";
-  const reidTone = health?.reid_status === "ready" ? "ok" : health?.reid_status === "degraded" ? "neutral" : "neutral";
+  const reidTone = health?.reid_status === "ready" ? "ok" : "neutral";
+  const activeTrackIds = new Set(detections.tracks.filter((track) => track.track_id > 0).map((track) => track.track_id));
+  const currentVisitorIds = new Set(detections.tracks.map((track) => track.visitor_id).filter((visitorId): visitorId is string => Boolean(visitorId)));
+  const averageConfidence = detections.tracks.length > 0 ? detections.tracks.reduce((total, track) => total + track.confidence, 0) / detections.tracks.length : null;
 
   return (
-    <div className="mb-5 space-y-4">
-      <div className="grid gap-3 md:grid-cols-3">
-        <CountBox icon={LogIn} label="Entry Count" value={counts.entry} tone="entry" />
-        <CountBox icon={LogOut} label="Exit Count" value={counts.exit} tone="exit" />
-        <CountBox icon={Users} label="Current Occupancy" value={counts.occupancy} tone="occupancy" />
+    <div className="space-y-3">
+      <div className="rounded-sm border border-gray-200 bg-white p-3 shadow-sm">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h4 className="text-[11px] font-bold tracking-wider text-[#111827] uppercase">Live Metrics</h4>
+          <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-bold text-gray-500">{counts.status}</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <MetricBox icon={LogIn} label="Entry" value={counts.entry} tone="entry" />
+          <MetricBox icon={LogOut} label="Exit" value={counts.exit} tone="exit" />
+          <MetricBox icon={Users} label="Occupancy" value={counts.occupancy} tone="occupancy" />
+          <MetricBox icon={Users} label="Unique IDs" value={health?.reid_gallery_size ?? 0} tone="unique" />
+          <MetricBox icon={Activity} label="Active IDs" value={activeTrackIds.size} tone="neutral" />
+          <MetricBox icon={Cpu} label="Avg Conf." value={formatAverageConfidence(averageConfidence)} tone="neutral" />
+        </div>
+        {currentVisitorIds.size > 0 && <p className="mt-2 truncate text-[10px] font-semibold text-gray-500">Visible unique visitors: {currentVisitorIds.size}</p>}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-sm border border-gray-200 bg-white p-3 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
+      <div className="rounded-sm border border-gray-200 bg-white p-3 shadow-sm">
+        <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
           <StatusPill icon={Activity} label={serviceLabel} tone={serviceOnline ? "ok" : "error"} />
           <StatusPill icon={Wifi} label={`Camera ${cameraLabel}`} tone={isProcessingThisCamera || activeCam.status === "online" ? "ok" : activeCam.status === "error" || activeCam.status === "offline" ? "error" : "neutral"} />
           {health && <StatusPill icon={Cpu} label={reidLabel} tone={reidTone} />}
           {serviceStatus?.pid && <span className="rounded-sm border border-gray-200 bg-gray-50 px-2 py-1 text-gray-500">PID {serviceStatus.pid}</span>}
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="mt-3 grid grid-cols-2 gap-2">
           <button
             type="button"
             onClick={onRestartService}
             disabled={isRestartingService}
-            className="flex items-center gap-1.5 rounded-sm border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex items-center justify-center gap-1.5 rounded-sm border border-gray-200 bg-white px-2 py-2 text-[11px] font-bold text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <RefreshCw size={14} className={isRestartingService ? "animate-spin" : ""} /> Service
           </button>
@@ -71,57 +86,59 @@ export function CameraMonitoringPanel({
             type="button"
             onClick={onTestConnection}
             disabled={isTesting || isProcessingThisCamera}
-            className="flex items-center gap-1.5 rounded-sm border border-[#065f46]/30 bg-white px-3 py-2 text-xs font-bold text-[#065f46] transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex items-center justify-center gap-1.5 rounded-sm border border-[#065f46]/30 bg-white px-2 py-2 text-[11px] font-bold text-[#065f46] transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <Wifi size={14} /> {isTesting ? "Testing..." : "Test Connection"}
+            <Wifi size={14} /> {isTesting ? "Testing..." : "Test"}
           </button>
           <button
             type="button"
             onClick={onStartProcessing}
             disabled={isStarting || isProcessingThisCamera}
-            className="flex items-center gap-1.5 rounded-sm bg-[#065f46] px-3 py-2 text-xs font-bold text-white shadow-sm transition-colors hover:bg-[#044a36] disabled:cursor-not-allowed disabled:bg-gray-400"
+            className="flex items-center justify-center gap-1.5 rounded-sm bg-[#065f46] px-2 py-2 text-[11px] font-bold text-white shadow-sm transition-colors hover:bg-[#044a36] disabled:cursor-not-allowed disabled:bg-gray-400"
           >
-            <Play size={14} /> {isStarting ? "Starting..." : "Start Processing"}
+            <Play size={14} /> {isStarting ? "Starting..." : "Start"}
           </button>
           <button
             type="button"
             onClick={onStopProcessing}
             disabled={isStopping || !counts.running}
-            className="flex items-center gap-1.5 rounded-sm border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex items-center justify-center gap-1.5 rounded-sm border border-red-200 bg-red-50 px-2 py-2 text-[11px] font-bold text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <Square size={14} /> {isStopping ? "Stopping..." : "Stop Processing"}
+            <Square size={14} /> {isStopping ? "Stopping..." : "Stop"}
           </button>
         </div>
       </div>
 
       {(error || health?.error || serviceStatus?.error || counts.error) && (
-        <div className="rounded-sm border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-800">{error ?? health?.error ?? serviceStatus?.error ?? counts.error}</div>
+        <div className="rounded-sm border border-red-200 bg-red-50 p-3 text-xs font-semibold text-red-800">{error ?? health?.error ?? serviceStatus?.error ?? counts.error}</div>
       )}
     </div>
   );
 }
 
-type CountBoxProps = {
+type MetricBoxProps = {
   icon: typeof LogIn;
   label: string;
-  tone: "entry" | "exit" | "occupancy";
-  value: number;
+  tone: "entry" | "exit" | "neutral" | "occupancy" | "unique";
+  value: number | string;
 };
 
-function CountBox({ icon: Icon, label, tone, value }: CountBoxProps) {
+function MetricBox({ icon: Icon, label, tone, value }: MetricBoxProps) {
   const toneClass = {
     entry: "border-emerald-200 bg-emerald-50 text-[#065f46]",
     exit: "border-red-200 bg-red-50 text-red-700",
+    neutral: "border-gray-200 bg-gray-50 text-gray-700",
     occupancy: "border-blue-200 bg-blue-50 text-blue-700",
+    unique: "border-amber-200 bg-amber-50 text-amber-800",
   }[tone];
 
   return (
-    <div className={`rounded-sm border p-3 ${toneClass}`}>
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-xs font-bold tracking-wider uppercase">{label}</span>
-        <Icon size={16} />
+    <div className={`rounded-sm border p-2 ${toneClass}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[9px] font-bold tracking-wider uppercase">{label}</span>
+        <Icon size={13} />
       </div>
-      <div className="mt-2 font-['Bai_Jamjuree'] text-3xl font-bold leading-none">{value}</div>
+      <div className="mt-1 font-['Bai_Jamjuree'] text-xl leading-none font-bold">{value}</div>
     </div>
   );
 }
@@ -144,4 +161,9 @@ function StatusPill({ icon: Icon, label, tone }: StatusPillProps) {
       <Icon size={13} /> {label}
     </span>
   );
+}
+
+function formatAverageConfidence(value: number | null) {
+  if (value === null) return "--";
+  return `${Math.round(value * 100)}%`;
 }

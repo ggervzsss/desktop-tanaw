@@ -163,8 +163,13 @@ export function EnterpriseShell({ initialView = "cameras" }: EnterpriseShellProp
       />
 
       <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div ref={contentScrollRef} className="flex-1 overflow-auto bg-[#f4f8f5] p-8 transition-colors duration-300 max-xl:p-6 max-sm:p-4 dark:bg-[#0f172a]">
-          <div className="mx-auto max-w-[1880px]">
+        <div
+          ref={contentScrollRef}
+          className={`flex-1 bg-[#f4f8f5] transition-colors duration-300 dark:bg-[#0f172a] ${
+            activeView === "cameras" ? "overflow-hidden p-4 max-xl:p-3" : "overflow-auto p-8 max-xl:p-6 max-sm:p-4"
+          }`}
+        >
+          <div className={`mx-auto max-w-[1880px] ${activeView === "cameras" ? "h-full min-h-0" : ""}`}>
             {activeView === "dashboard" && <DashboardView />}
             {activeView === "cameras" && <CameraManagementView cameras={cameras} setCameras={setCameras} />}
             {activeView === "reports" && <ReportsView reportsHistory={reportsHistory} setReportsHistory={setReportsHistory} />}

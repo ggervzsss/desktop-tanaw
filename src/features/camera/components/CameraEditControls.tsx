@@ -9,10 +9,10 @@ type CameraEditControlsProps = {
 };
 
 const roiFields = [
-  { label: "Top Offset", key: "top", min: 0, max: 50 },
-  { label: "Left Offset", key: "left", min: 0, max: 50 },
-  { label: "Width Coverage", key: "width", min: 20, max: 100 },
-  { label: "Height Coverage", key: "height", min: 20, max: 100 },
+  { label: "Top", key: "top", min: 0, max: 50 },
+  { label: "Left", key: "left", min: 0, max: 50 },
+  { label: "Width", key: "width", min: 20, max: 100 },
+  { label: "Height", key: "height", min: 20, max: 100 },
 ] as const;
 
 export function CameraEditControls({ editForm, onEditFormChange }: CameraEditControlsProps) {
@@ -22,89 +22,110 @@ export function CameraEditControls({ editForm, onEditFormChange }: CameraEditCon
       ...editForm,
       config: {
         ...editForm.config,
-        roi: clampRoi({
-          ...editForm.config.roi,
-          [key]: value,
-        }, key),
+        roi: clampRoi(
+          {
+            ...editForm.config.roi,
+            [key]: value,
+          },
+          key,
+        ),
       },
     });
   };
 
   return (
-    <div className="grid grid-cols-1 gap-6 rounded-sm border border-gray-200 bg-white p-4 shadow-inner md:grid-cols-2">
-      <div className="md:col-span-2">
-        <h4 className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-2 text-xs font-bold tracking-wider text-[#111827] uppercase">
+    <div className="space-y-3 rounded-sm border border-gray-200 bg-white p-3 shadow-sm">
+      <section>
+        <h4 className="mb-2 flex items-center gap-2 text-[11px] font-bold tracking-wider text-[#111827] uppercase">
           <Video size={14} className="text-[#065f46]" /> Camera Stream
         </h4>
-        <div className="grid gap-4 lg:grid-cols-[1fr_180px_140px]">
-          <div>
-            <label className="mb-1 block text-[10px] font-bold text-gray-500 uppercase">Stream URL</label>
+        <div className="space-y-2">
+          <CompactField label="Node Name">
+            <input
+              type="text"
+              value={editForm.name}
+              onChange={(event) => onEditFormChange({ ...editForm, name: event.target.value })}
+              className="w-full rounded-sm border border-gray-300 px-2 py-1.5 text-xs font-semibold text-gray-800 outline-none transition focus:border-[#065f46]"
+            />
+          </CompactField>
+          <CompactField label="Assigned Zone">
+            <input
+              type="text"
+              value={editForm.zone}
+              onChange={(event) => onEditFormChange({ ...editForm, zone: event.target.value })}
+              className="w-full rounded-sm border border-gray-300 px-2 py-1.5 text-xs font-semibold text-gray-800 outline-none transition focus:border-[#065f46]"
+            />
+          </CompactField>
+          <CompactField label="Stream URL">
             <input
               type="text"
               value={editForm.rtsp}
               onChange={(event) => onEditFormChange({ ...editForm, rtsp: event.target.value })}
-              className="w-full rounded-sm border border-gray-300 p-2 font-mono text-sm text-gray-800 outline-none transition focus:border-[#065f46]"
+              className="w-full rounded-sm border border-gray-300 px-2 py-1.5 font-mono text-xs text-gray-800 outline-none transition focus:border-[#065f46]"
             />
+          </CompactField>
+          <div className="grid grid-cols-2 gap-2">
+            <CompactField label="Camera Type">
+              <select
+                value={editForm.cameraType}
+                onChange={(event) => onEditFormChange({ ...editForm, cameraType: event.target.value as Camera["cameraType"] })}
+                className="w-full rounded-sm border border-gray-300 px-2 py-1.5 text-xs font-semibold text-gray-800 outline-none transition focus:border-[#065f46]"
+              >
+                <option value="IP_WEBCAM">IP Webcam</option>
+                <option value="RTSP_CCTV">RTSP CCTV</option>
+                <option value="USB_WEBCAM">USB Webcam</option>
+                <option value="ONVIF_CCTV">ONVIF CCTV</option>
+              </select>
+            </CompactField>
+            <CompactField label="Confidence">
+              <input
+                type="number"
+                min="0.05"
+                max="0.95"
+                step="0.05"
+                value={editForm.confidence}
+                onChange={(event) => onEditFormChange({ ...editForm, confidence: Number(event.target.value) })}
+                className="w-full rounded-sm border border-gray-300 px-2 py-1.5 text-xs font-semibold text-gray-800 outline-none transition focus:border-[#065f46]"
+              />
+            </CompactField>
           </div>
-          <div>
-            <label className="mb-1 block text-[10px] font-bold text-gray-500 uppercase">Camera Type</label>
-            <select
-              value={editForm.cameraType}
-              onChange={(event) => onEditFormChange({ ...editForm, cameraType: event.target.value as Camera["cameraType"] })}
-              className="w-full rounded-sm border border-gray-300 p-2 text-sm font-semibold text-gray-800 outline-none transition focus:border-[#065f46]"
-            >
-              <option value="IP_WEBCAM">IP Webcam</option>
-              <option value="RTSP_CCTV">RTSP CCTV</option>
-              <option value="USB_WEBCAM">USB Webcam</option>
-              <option value="ONVIF_CCTV">ONVIF CCTV</option>
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-[10px] font-bold text-gray-500 uppercase">Confidence</label>
-            <input
-              type="number"
-              min="0.05"
-              max="0.95"
-              step="0.05"
-              value={editForm.confidence}
-              onChange={(event) => onEditFormChange({ ...editForm, confidence: Number(event.target.value) })}
-              className="w-full rounded-sm border border-gray-300 p-2 text-sm font-semibold text-gray-800 outline-none transition focus:border-[#065f46]"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-[10px] font-bold text-gray-500 uppercase">Username</label>
-            <input
-              type="text"
-              value={editForm.username ?? ""}
-              onChange={(event) => onEditFormChange({ ...editForm, username: event.target.value })}
-              className="w-full rounded-sm border border-gray-300 p-2 text-sm text-gray-800 outline-none transition focus:border-[#065f46]"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-[10px] font-bold text-gray-500 uppercase">Password</label>
-            <input
-              type="password"
-              value={editForm.password ?? ""}
-              onChange={(event) => onEditFormChange({ ...editForm, password: event.target.value })}
-              className="w-full rounded-sm border border-gray-300 p-2 text-sm text-gray-800 outline-none transition focus:border-[#065f46]"
-            />
+          <div className="grid grid-cols-2 gap-2">
+            <CompactField label="Username">
+              <input
+                type="text"
+                value={editForm.username ?? ""}
+                onChange={(event) => onEditFormChange({ ...editForm, username: event.target.value })}
+                className="w-full rounded-sm border border-gray-300 px-2 py-1.5 text-xs text-gray-800 outline-none transition focus:border-[#065f46]"
+              />
+            </CompactField>
+            <CompactField label="Password">
+              <input
+                type="password"
+                value={editForm.password ?? ""}
+                onChange={(event) => onEditFormChange({ ...editForm, password: event.target.value })}
+                className="w-full rounded-sm border border-gray-300 px-2 py-1.5 text-xs text-gray-800 outline-none transition focus:border-[#065f46]"
+              />
+            </CompactField>
           </div>
         </div>
         {isRtspCamera && (
-          <div className="mt-4">
+          <div className="mt-2">
             <TapoRtspBuilder streamUrl={editForm.rtsp} onStreamUrlChange={(rtsp) => onEditFormChange({ ...editForm, rtsp })} />
           </div>
         )}
-      </div>
+      </section>
 
-      <div className="md:col-span-2">
-        <h4 className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-2 text-xs font-bold tracking-wider text-[#111827] uppercase">
+      <section>
+        <h4 className="mb-2 flex items-center gap-2 text-[11px] font-bold tracking-wider text-[#111827] uppercase">
           <Maximize size={14} className="text-[#2d5eff]" /> Region of Interest
         </h4>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+        <div className="grid grid-cols-2 gap-x-3 gap-y-2">
           {roiFields.map(({ label, key, min, max }) => (
             <div key={key}>
-              <label className="mb-1 block text-[10px] font-bold text-gray-500 uppercase">{label}</label>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <label className="text-[9px] font-bold tracking-wider text-gray-500 uppercase">{label}</label>
+                <span className="text-[10px] font-bold text-gray-500">{editForm.config.roi[key]}%</span>
+              </div>
               <input
                 type="range"
                 min={min}
@@ -116,8 +137,22 @@ export function CameraEditControls({ editForm, onEditFormChange }: CameraEditCon
             </div>
           ))}
         </div>
-      </div>
+      </section>
     </div>
+  );
+}
+
+type CompactFieldProps = {
+  children: React.ReactNode;
+  label: string;
+};
+
+function CompactField({ children, label }: CompactFieldProps) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[9px] font-bold tracking-wider text-gray-500 uppercase">{label}</span>
+      {children}
+    </label>
   );
 }
 

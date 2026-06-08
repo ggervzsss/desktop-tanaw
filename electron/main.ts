@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, Tray } from "electron";
 import { existsSync } from "node:fs";
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -29,6 +30,7 @@ let isQuitting = false;
 const mlServicePort = Number(process.env["TANAW_ML_SERVICE_PORT"] ?? "8765");
 const mlServiceUrl = `http://127.0.0.1:${mlServicePort}`;
 const TRAY_ICON_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGUlEQVR4nGNgi3f7TwlmGDVg1IBRA4aLAQAdsKoQzBu6fQAAAABJRU5ErkJggg==";
+const execFileAsync = promisify(execFile);
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
@@ -149,6 +151,15 @@ function isMlServiceRunning() {
   return Boolean(mlServiceProcess) || mlServiceConnectedExternally;
 }
 
+async function getMlServiceStatusPayload() {
+  return {
+    baseUrl: mlServiceUrl,
+    error: mlServiceError,
+    pid: mlServiceProcess?.pid ?? (mlServiceConnectedExternally ? await findMlServiceListenerPid() : null),
+    running: isMlServiceRunning(),
+  };
+}
+
 async function isMlServiceReachable(timeoutMs = 750) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -179,8 +190,126 @@ async function stopCameraProcessingFromTray() {
 }
 
 async function restartMlService() {
-  await stopMlService(3000);
+  if (mlServiceConnectedExternally && !mlServiceProcess) {
+    await stopExternalMlService(3000);
+  } else {
+    await stopMlService(3000);
+  }
+
   await startMlService();
+}
+
+async function stopExternalMlService(waitMs = 0) {
+  const pid = await findMlServiceListenerPid();
+  mlServiceConnectedExternally = false;
+
+  if (!pid) {
+    updateTrayMenu();
+    return;
+  }
+
+  if (!(await isLocalMlServiceProcess(pid))) {
+    mlServiceError = `A service is already listening on port ${mlServicePort}, but it was not started from this TANAW workspace.`;
+    updateTrayMenu();
+    return;
+  }
+
+  await terminateProcessId(pid, waitMs);
+  updateTrayMenu();
+}
+
+async function findMlServiceListenerPid() {
+  try {
+    if (process.platform === "win32") {
+      const script = [
+        `$conn = Get-NetTCPConnection -LocalPort ${mlServicePort} -State Listen -ErrorAction SilentlyContinue`,
+        "| Where-Object { $_.LocalAddress -eq '127.0.0.1' -or $_.LocalAddress -eq '0.0.0.0' -or $_.LocalAddress -eq '::1' }",
+        "| Select-Object -First 1",
+        "if ($conn) { $conn.OwningProcess }",
+      ].join(" ");
+      const { stdout } = await execFileAsync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { timeout: 3000, windowsHide: true });
+      return parseProcessId(stdout);
+    }
+
+    const { stdout } = await execFileAsync("lsof", ["-nP", `-iTCP:${mlServicePort}`, "-sTCP:LISTEN", "-t"], { timeout: 3000 });
+    return parseProcessId(stdout);
+  } catch {
+    return null;
+  }
+}
+
+function parseProcessId(output: string) {
+  const pid = Number(output.trim().split(/\s+/)[0]);
+  return Number.isInteger(pid) && pid > 0 ? pid : null;
+}
+
+async function isLocalMlServiceProcess(pid: number) {
+  const commandLine = await getProcessCommandLine(pid);
+  if (!commandLine) {
+    return false;
+  }
+
+  const serviceDir = normalizeProcessPath(getMlServiceDir());
+  return normalizeProcessPath(commandLine).includes(serviceDir);
+}
+
+async function getProcessCommandLine(pid: number) {
+  try {
+    if (process.platform === "win32") {
+      const script = `$proc = Get-CimInstance Win32_Process -Filter "ProcessId=${pid}" -ErrorAction SilentlyContinue; if ($proc) { $proc.CommandLine }`;
+      const { stdout } = await execFileAsync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { timeout: 3000, windowsHide: true });
+      return stdout.trim() || null;
+    }
+
+    const { stdout } = await execFileAsync("ps", ["-p", String(pid), "-o", "command="], { timeout: 3000 });
+    return stdout.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeProcessPath(value: string) {
+  return path.normalize(value).toLowerCase();
+}
+
+async function terminateProcessId(pid: number, waitMs: number) {
+  try {
+    if (process.platform === "win32") {
+      await execFileAsync("taskkill.exe", ["/PID", String(pid), "/T"], { timeout: Math.max(waitMs, 1500), windowsHide: true });
+    } else {
+      process.kill(pid);
+    }
+  } catch (error) {
+    mlServiceError = error instanceof Error ? error.message : `Unable to stop ML service process ${pid}.`;
+  }
+
+  if (waitMs <= 0 || (await waitForMlServicePortRelease(waitMs))) {
+    return;
+  }
+
+  try {
+    if (process.platform === "win32") {
+      await execFileAsync("taskkill.exe", ["/PID", String(pid), "/T", "/F"], { timeout: 1500, windowsHide: true });
+    } else {
+      process.kill(pid, "SIGKILL");
+    }
+    await waitForMlServicePortRelease(1500);
+  } catch (error) {
+    mlServiceError = error instanceof Error ? error.message : `Unable to force stop ML service process ${pid}.`;
+  }
+}
+
+async function waitForMlServicePortRelease(timeoutMs: number) {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    if (!(await isMlServiceReachable(250))) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+
+  return false;
 }
 
 function waitForProcessExit(process: ChildProcess, timeoutMs: number) {
@@ -216,21 +345,11 @@ function waitForProcessExit(process: ChildProcess, timeoutMs: number) {
 }
 
 function registerMlServiceIpc() {
-  ipcMain.handle("ml-service:get-status", () => ({
-    baseUrl: mlServiceUrl,
-    error: mlServiceError,
-    pid: mlServiceProcess?.pid ?? null,
-    running: isMlServiceRunning(),
-  }));
+  ipcMain.handle("ml-service:get-status", () => getMlServiceStatusPayload());
 
   ipcMain.handle("ml-service:restart", async () => {
     await restartMlService();
-    return {
-      baseUrl: mlServiceUrl,
-      error: mlServiceError,
-      pid: mlServiceProcess?.pid ?? null,
-      running: isMlServiceRunning(),
-    };
+    return getMlServiceStatusPayload();
   });
 }
 

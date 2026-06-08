@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { Camera } from "../../../types/enterprise";
-import type { MlDetections } from "../services/ml-service";
+import type { MlCounts, MlDetections, MlHealth } from "../services/ml-service";
 import { CameraOverlayConfig } from "./CameraOverlayConfig";
 
 type CameraVideoPreviewProps = {
   activeCam: Camera;
+  counts: MlCounts;
   detections: MlDetections;
   editForm: Camera | null;
+  health: MlHealth | null;
   isProcessing: boolean;
   isEditMode: boolean;
   onEditFormChange: Dispatch<SetStateAction<Camera | null>>;
@@ -20,7 +22,7 @@ type ContentRect = {
   width: number;
 };
 
-export function CameraVideoPreview({ activeCam, detections, editForm, isProcessing, isEditMode, onEditFormChange, streamUrl }: CameraVideoPreviewProps) {
+export function CameraVideoPreview({ activeCam, counts, detections, editForm, health, isProcessing, isEditMode, onEditFormChange, streamUrl }: CameraVideoPreviewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [contentRect, setContentRect] = useState<ContentRect | null>(null);
   const streamIsAvailable = isProcessing && streamUrl;
@@ -28,6 +30,8 @@ export function CameraVideoPreview({ activeCam, detections, editForm, isProcessi
   const shouldShowConfigOverlay = isEditMode || !streamIsAvailable;
   const frameWidth = detections.frame_width ?? 0;
   const frameHeight = detections.frame_height ?? 0;
+  const activeTrackCount = detections.tracks.filter((track) => track.track_id > 0).length;
+  const fpsLabel = activeCam.fps > 0 ? `${activeCam.fps} FPS` : "FPS Adaptive";
 
   useEffect(() => {
     const container = containerRef.current;
@@ -60,7 +64,7 @@ export function CameraVideoPreview({ activeCam, detections, editForm, isProcessi
   }, [frameHeight, frameWidth]);
 
   return (
-    <div ref={containerRef} className={`relative mb-5 aspect-video w-full overflow-hidden rounded-sm bg-[#111827] ${isEditMode ? "ring-2 ring-[#065f46] ring-offset-2" : ""}`}>
+    <div ref={containerRef} className={`relative h-full min-h-[360px] w-full overflow-hidden rounded-sm border border-slate-800 bg-[#07110d] shadow-[0_20px_45px_rgba(15,23,42,0.22)] ${isEditMode ? "ring-2 ring-[#065f46] ring-offset-2" : ""}`}>
       {streamIsAvailable ? (
         <img key={streamUrl} src={streamUrl} alt={`${activeCam.name} live camera stream`} className="absolute inset-0 h-full w-full object-contain" draggable={false} />
       ) : activeCam.status === "online" || activeCam.status === "untested" || activeCam.status === "stopped" ? (
@@ -100,17 +104,17 @@ export function CameraVideoPreview({ activeCam, detections, editForm, isProcessi
             const height = Math.max(0, bottom - top);
             const isCrossing = track.direction === "entry" || track.direction === "exit";
             const isOutsideRoi = track.inside_roi === false;
-            const label = track.track_id > 0 ? `ID ${track.track_id}` : "PERSON";
+            const label = track.track_id > 0 ? `#${track.track_id}` : "PERSON";
             const tone = getTrackTone(isOutsideRoi, isCrossing);
 
             return (
               <div
                 key={track.track_id}
-                className={`absolute border-2 ${tone.boxClass}`}
+                className={`absolute border ${tone.boxClass}`}
                 style={{ height: `${height}%`, left: `${left}%`, top: `${top}%`, width: `${width}%` }}
               >
-                <span className={`absolute -top-6 left-0 rounded-sm px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap text-black ${tone.labelClass}`}>
-                  {label} {(track.confidence * 100).toFixed(0)}%
+                <span className={`absolute top-1 left-1 rounded-full border px-1.5 py-px text-[9px] leading-none font-bold whitespace-nowrap shadow-sm backdrop-blur-sm ${tone.labelClass}`}>
+                  {label} - {(track.confidence * 100).toFixed(0)}%
                 </span>
               </div>
             );
@@ -118,17 +122,22 @@ export function CameraVideoPreview({ activeCam, detections, editForm, isProcessi
         </div>
       )}
 
-      {(streamIsAvailable || activeCam.status === "online") && (
-        <div className="absolute top-3 right-3 flex gap-2">
-          <span className="flex items-center gap-1 rounded-sm border border-green-500/50 bg-black/60 px-2 py-1 text-[10px] font-bold text-green-400 shadow-sm backdrop-blur-sm">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-400"></span> LIVE
-          </span>
-          <span className="rounded-sm border border-white/20 bg-black/60 px-2 py-1 text-[10px] font-bold text-white shadow-sm backdrop-blur-sm">{activeCam.fps} FPS</span>
-          <span className="rounded-sm border border-white/20 bg-black/60 px-2 py-1 text-[10px] font-bold text-white shadow-sm backdrop-blur-sm">{activeCam.resolution}</span>
+      <div className="absolute top-3 right-3 left-3 flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap gap-1.5">
+          <PreviewBadge label={counts.running ? "AI Processing" : "Preview"} tone={counts.running ? "ok" : "neutral"} />
+          <PreviewBadge label={`${activeTrackCount} Tracks`} tone={activeTrackCount > 0 ? "ok" : "neutral"} />
+          <PreviewBadge label={health?.model_ready ? "Model Ready" : health?.model_loading ? "Model Loading" : "Model Standby"} tone={health?.model_ready ? "ok" : "neutral"} />
         </div>
-      )}
-
-      <div className="pointer-events-none absolute bottom-3 left-3 font-['Bai_Jamjuree'] text-2xl font-bold text-white/30 select-none">{streamIsAvailable ? "TANAW Live Feed" : "TANAW Edge Preview"}</div>
+        {(streamIsAvailable || activeCam.status === "online") && (
+          <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+            <span className="flex items-center gap-1 rounded-full border border-green-500/50 bg-black/60 px-2 py-1 text-[10px] font-bold text-green-400 shadow-sm backdrop-blur-sm">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-400"></span> LIVE
+            </span>
+            <span className="rounded-full border border-white/20 bg-black/60 px-2 py-1 text-[10px] font-bold text-white shadow-sm backdrop-blur-sm">{fpsLabel}</span>
+            <span className="rounded-full border border-white/20 bg-black/60 px-2 py-1 text-[10px] font-bold text-white shadow-sm backdrop-blur-sm">{activeCam.resolution}</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -141,20 +150,31 @@ function clampPercent(value: number) {
 function getTrackTone(isOutsideRoi: boolean, isCrossing: boolean) {
   if (isOutsideRoi) {
     return {
-      boxClass: "border-slate-300 shadow-[0_0_10px_rgba(148,163,184,0.3)]",
-      labelClass: "bg-slate-300",
+      boxClass: "border-slate-300/80 shadow-[0_0_10px_rgba(148,163,184,0.26)]",
+      labelClass: "border-slate-200/70 bg-slate-900/65 text-slate-100",
     };
   }
 
   if (isCrossing) {
     return {
-      boxClass: "border-yellow-300 shadow-[0_0_10px_rgba(250,204,21,0.45)]",
-      labelClass: "bg-yellow-300",
+      boxClass: "border-yellow-300/90 shadow-[0_0_10px_rgba(250,204,21,0.38)]",
+      labelClass: "border-yellow-200/60 bg-yellow-400/75 text-slate-950",
     };
   }
 
   return {
-    boxClass: "border-emerald-400 shadow-[0_0_10px_rgba(34,197,94,0.35)]",
-    labelClass: "bg-emerald-400",
+    boxClass: "border-emerald-400/85 shadow-[0_0_10px_rgba(34,197,94,0.3)]",
+    labelClass: "border-emerald-200/60 bg-emerald-500/70 text-white",
   };
+}
+
+type PreviewBadgeProps = {
+  label: string;
+  tone: "ok" | "neutral";
+};
+
+function PreviewBadge({ label, tone }: PreviewBadgeProps) {
+  const toneClass = tone === "ok" ? "border-emerald-400/40 bg-emerald-950/55 text-emerald-100" : "border-white/15 bg-black/45 text-white/80";
+
+  return <span className={`rounded-full border px-2 py-1 text-[10px] font-bold shadow-sm backdrop-blur-sm ${toneClass}`}>{label}</span>;
 }
