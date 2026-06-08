@@ -516,7 +516,7 @@ class CameraProcessingManager:
                 ) = frame_snapshot
 
                 started_at = time.monotonic()
-                display_frame = self._render_display_frame(frame, tracks, tripwire_position, entry_line, exit_line, roi, reverse_direction, entry_count, exit_count, occupancy_count)
+                display_frame = self._render_display_frame(frame, tracks, tripwire_position, entry_line, exit_line, roi, reverse_direction)
                 encoded = self._encode_frame(display_frame)
 
                 with self._raw_frame_condition:
@@ -669,9 +669,6 @@ class CameraProcessingManager:
         exit_line,
         roi,
         reverse_direction: bool,
-        entry_count: int,
-        exit_count: int,
-        occupancy_count: int,
     ):
         height, width = frame.shape[:2]
         self._draw_roi(frame, roi, width, height)
@@ -683,11 +680,11 @@ class CameraProcessingManager:
 
             cv2.line(frame, (line_x, 0), (line_x, height), (59, 130, 246), 2)
             if reverse_direction:
-                cv2.putText(frame, "ENTRY", (max(8, line_x - 92), 28), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (74, 222, 128), 2, cv2.LINE_AA)
-                cv2.putText(frame, "EXIT", (line_x + 12, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (248, 113, 113), 2, cv2.LINE_AA)
+                cv2.putText(frame, "ENTRY", (max(8, line_x - 70), 22), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (74, 222, 128), 1, cv2.LINE_AA)
+                cv2.putText(frame, "EXIT", (line_x + 10, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (248, 113, 113), 1, cv2.LINE_AA)
             else:
-                cv2.putText(frame, "EXIT", (max(8, line_x - 74), 28), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (248, 113, 113), 2, cv2.LINE_AA)
-                cv2.putText(frame, "ENTRY", (line_x + 12, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (74, 222, 128), 2, cv2.LINE_AA)
+                cv2.putText(frame, "EXIT", (max(8, line_x - 54), 22), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (248, 113, 113), 1, cv2.LINE_AA)
+                cv2.putText(frame, "ENTRY", (line_x + 10, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (74, 222, 128), 1, cv2.LINE_AA)
 
         for track in tracks:
             x1, y1, x2, y2 = track.bbox
@@ -695,15 +692,35 @@ class CameraProcessingManager:
 
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
             cv2.circle(frame, track.centroid, 4, (250, 204, 21), -1)
-            label = f"ID {track.track_id} {track.confidence:.2f}"
-            cv2.rectangle(frame, (x1, max(0, y1 - 26)), (x1 + 126, y1), color, -1)
-            cv2.putText(frame, label, (x1 + 6, max(18, y1 - 7)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (15, 23, 42), 1, cv2.LINE_AA)
-
-        status = f"Entry {entry_count}  Exit {exit_count}  Occupancy {occupancy_count}"
-        cv2.rectangle(frame, (12, height - 44), (380, height - 12), (15, 23, 42), -1)
-        cv2.putText(frame, status, (24, height - 22), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2, cv2.LINE_AA)
+            self._draw_track_label(frame, x1, y1, f"#{track.track_id} - {track.confidence * 100:.0f}%", color)
 
         return frame
+
+    def _draw_track_label(self, frame, x: int, y: int, label: str, color: tuple[int, int, int]) -> None:
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 0.38
+        thickness = 1
+        padding_x = 5
+        padding_y = 3
+        text_size, baseline = cv2.getTextSize(label, font, font_scale, thickness)
+        text_width, text_height = text_size
+        label_width = text_width + padding_x * 2
+        label_height = text_height + padding_y * 2 + baseline
+
+        frame_height, frame_width = frame.shape[:2]
+        left = max(0, min(x, frame_width - label_width - 1))
+        top = y - label_height - 3
+        if top < 0:
+            top = min(frame_height - label_height - 1, y + 3)
+        top = max(0, top)
+        right = min(frame_width - 1, left + label_width)
+        bottom = min(frame_height - 1, top + label_height)
+
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (left, top), (right, bottom), color, -1)
+        cv2.addWeighted(overlay, 0.58, frame, 0.42, 0, frame)
+        cv2.rectangle(frame, (left, top), (right, bottom), color, 1)
+        cv2.putText(frame, label, (left + padding_x, bottom - padding_y - baseline), font, font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
 
     def _draw_roi(self, frame, roi, frame_width: int, frame_height: int) -> None:
         x1 = int(roi.left * frame_width)
@@ -711,7 +728,7 @@ class CameraProcessingManager:
         x2 = int((roi.left + roi.width) * frame_width)
         y2 = int((roi.top + roi.height) * frame_height)
         cv2.rectangle(frame, (x1, y1), (x2, y2), (59, 130, 246), 2)
-        cv2.putText(frame, "ROI", (x1 + 8, max(20, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.62, (59, 130, 246), 2, cv2.LINE_AA)
+        cv2.putText(frame, "ROI", (x1 + 6, max(18, y1 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (59, 130, 246), 1, cv2.LINE_AA)
 
     def _draw_tripwire_line(self, frame, line, frame_width: int, frame_height: int, label: str, color: tuple[int, int, int]) -> None:
         if line is None:
@@ -720,10 +737,10 @@ class CameraProcessingManager:
         (x1, y1), (x2, y2) = line
         start = (int(x1 * frame_width), int(y1 * frame_height))
         end = (int(x2 * frame_width), int(y2 * frame_height))
-        cv2.line(frame, start, end, color, 3)
-        cv2.circle(frame, start, 5, color, -1)
-        cv2.circle(frame, end, 5, color, -1)
-        cv2.putText(frame, label, (start[0] + 8, max(20, start[1] - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.62, color, 2, cv2.LINE_AA)
+        cv2.line(frame, start, end, color, 2)
+        cv2.circle(frame, start, 4, color, -1)
+        cv2.circle(frame, end, 4, color, -1)
+        cv2.putText(frame, label, (start[0] + 6, max(18, start[1] - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.48, color, 1, cv2.LINE_AA)
 
     def _normalized_line(self, line):
         if line is None:

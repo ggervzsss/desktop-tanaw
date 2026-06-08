@@ -176,12 +176,12 @@ function TripwireSvgLine({ canEdit, isActive, line, lineKind, onLinePointerDown,
         x2={line.end.x}
         y2={line.end.y}
         stroke={style.color}
-        strokeWidth={isActive ? 3 : 2.4}
+        strokeWidth={isActive ? 2.4 : 2}
         vectorEffect="non-scaling-stroke"
         className={canEdit ? "cursor-move" : ""}
         onPointerDown={onLinePointerDown}
       />
-      <text x={labelX} y={labelY} fill={style.color} className="text-[4px] font-bold drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]">
+      <text x={labelX} y={labelY} fill={style.color} className="text-[2.6px] font-bold drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]">
         {style.label}
       </text>
       {canEdit &&
