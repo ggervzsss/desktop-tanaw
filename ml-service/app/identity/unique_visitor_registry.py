@@ -40,6 +40,14 @@ class VisitorIdentity:
     expires_at: str
 
 
+@dataclass
+class VisitorModelEmbedding:
+    visitor_id: str
+    embedding: np.ndarray
+    embedding_count: int
+    model_name: str
+
+
 class UniqueVisitorRegistry:
     def __init__(
         self,
@@ -50,6 +58,9 @@ class UniqueVisitorRegistry:
         strong_match_threshold: float = 0.72,
         new_visitor_threshold: float = 0.60,
         top_match_margin: float = 0.05,
+        quality_model_name: str | None = None,
+        quality_strong_match_threshold: float = 0.74,
+        quality_top_match_margin: float = 0.05,
     ) -> None:
         self._session_store = session_store
         self.model_name = model_name
@@ -58,9 +69,13 @@ class UniqueVisitorRegistry:
         self.strong_match_threshold = strong_match_threshold
         self.new_visitor_threshold = new_visitor_threshold
         self.top_match_margin = top_match_margin
+        self.quality_model_name = quality_model_name
+        self.quality_strong_match_threshold = quality_strong_match_threshold
+        self.quality_top_match_margin = quality_top_match_margin
         self._business_date: str | None = None
         self._camera_id: int | None = None
         self._gallery: list[VisitorIdentity] = []
+        self._quality_gallery: dict[str, VisitorModelEmbedding] = {}
         self._track_visitors: dict[int, str] = {}
         self._last_cleanup_at: str | None = None
 
@@ -75,6 +90,7 @@ class UniqueVisitorRegistry:
         self._camera_id = camera_id
         self._track_visitors.clear()
         self._gallery = self._load_gallery(business_date, camera_id, now)
+        self._quality_gallery = self._load_quality_gallery(business_date, camera_id, now)
 
     def reset_session_tracks(self) -> None:
         self._track_visitors.clear()
@@ -93,11 +109,13 @@ class UniqueVisitorRegistry:
         self._last_cleanup_at = now.isoformat()
         if deleted_count and self._business_date is not None:
             self._gallery = self._load_gallery(self._business_date, self._camera_id, now)
+            self._quality_gallery = self._load_quality_gallery(self._business_date, self._camera_id, now)
         return deleted_count
 
     def status(self) -> dict[str, int | str | None]:
         return {
             "reid_gallery_size": len(self._gallery),
+            "reid_quality_gallery_size": len(self._quality_gallery),
             "reid_business_date": self._business_date,
             "reid_last_cleanup_at": self._last_cleanup_at,
         }
@@ -110,6 +128,7 @@ class UniqueVisitorRegistry:
         embedding: np.ndarray | None,
         detection_confidence: float | None,
         bbox: tuple[int, int, int, int] | None,
+        quality_embedding: np.ndarray | None = None,
         now: datetime | None = None,
     ) -> VisitorDecision:
         now = now or datetime.now(timezone.utc)
@@ -150,15 +169,37 @@ class UniqueVisitorRegistry:
                 business_date=business_date,
             )
 
-        match, score, margin = self._best_match(normalized)
-        if match is not None and score >= self.strong_match_threshold and margin >= self.top_match_margin:
+        quality_normalized = _normalize_embedding(quality_embedding) if quality_embedding is not None else None
+        quality_match, quality_score, quality_margin = self._best_quality_match(quality_normalized)
+        fast_match, fast_score, fast_margin = self._best_match(normalized)
+
+        match = None
+        score = fast_score
+        decision_name = "matched_existing"
+        if (
+            quality_match is not None
+            and quality_score is not None
+            and quality_score >= self.quality_strong_match_threshold
+            and quality_margin >= self.quality_top_match_margin
+        ):
+            match = quality_match
+            score = quality_score
+            decision_name = "matched_existing_quality"
+        elif fast_match is not None and fast_score is not None and fast_score >= self.strong_match_threshold and fast_margin >= self.top_match_margin:
+            match = fast_match
+
+        if match is not None:
             self._track_visitors[track_id] = match.visitor_id
-            self._update_identity(match, normalized, now)
+            selected_fast_score = float(match.embedding @ normalized)
+            if decision_name != "matched_existing_quality" or selected_fast_score >= self.new_visitor_threshold:
+                self._update_identity(match, normalized, now)
+            if quality_normalized is not None:
+                self._update_quality_embedding(match.visitor_id, quality_normalized, now)
             decision = VisitorDecision(
                 visitor_id=match.visitor_id,
                 is_unique_entry=False,
                 reid_score=score,
-                reid_decision="matched_existing",
+                reid_decision=decision_name,
                 identity_confidence="high",
                 business_date=business_date,
             )
@@ -168,7 +209,7 @@ class UniqueVisitorRegistry:
         visitor_id = str(uuid4())
         decision_name = "new"
         confidence = "high"
-        if score is not None and score >= self.new_visitor_threshold:
+        if fast_score is not None and fast_score >= self.new_visitor_threshold:
             decision_name = "ambiguous_new"
             confidence = "low"
 
@@ -184,16 +225,31 @@ class UniqueVisitorRegistry:
         self._gallery.append(identity)
         self._track_visitors[track_id] = visitor_id
         self._persist_identity(identity, now)
+        if quality_normalized is not None:
+            self._update_quality_embedding(visitor_id, quality_normalized, now)
         decision = VisitorDecision(
             visitor_id=visitor_id,
             is_unique_entry=True,
-            reid_score=score,
+            reid_score=fast_score,
             reid_decision=decision_name,
             identity_confidence=confidence,
             business_date=business_date,
         )
         self._persist_sighting(decision, track_id, camera_id, detection_confidence, bbox, now)
         return decision
+
+    def record_quality_embedding_for_track(
+        self,
+        track_id: int,
+        embedding: np.ndarray,
+        now: datetime | None = None,
+    ) -> bool:
+        visitor_id = self._track_visitors.get(track_id)
+        normalized = _normalize_embedding(embedding)
+        if visitor_id is None or normalized is None:
+            return False
+        self._update_quality_embedding(visitor_id, normalized, now or datetime.now(timezone.utc))
+        return True
 
     def business_date_for(self, now: datetime) -> str:
         return now.astimezone(self.timezone).date().isoformat()
@@ -235,6 +291,45 @@ class UniqueVisitorRegistry:
             )
         return gallery
 
+    def _load_quality_gallery(
+        self,
+        business_date: str,
+        camera_id: int | None,
+        now: datetime,
+    ) -> dict[str, VisitorModelEmbedding]:
+        if self.quality_model_name is None:
+            return {}
+
+        valid_visitor_ids = {identity.visitor_id for identity in self._gallery}
+        gallery: dict[str, VisitorModelEmbedding] = {}
+        rows = self._session_store.load_active_visitor_model_embeddings(
+            business_date,
+            self.quality_model_name,
+            now.isoformat(),
+        )
+        for row in rows:
+            visitor_id = row["visitor_id"]
+            if visitor_id not in valid_visitor_ids:
+                continue
+            row_camera_id = row.get("camera_id")
+            if camera_id is not None and row_camera_id != camera_id:
+                continue
+            if camera_id is None and row_camera_id is not None:
+                continue
+            embedding = np.frombuffer(row["representative_embedding"], dtype=np.float32)
+            if embedding.size != int(row["embedding_dim"]):
+                continue
+            normalized = _normalize_embedding(embedding)
+            if normalized is None:
+                continue
+            gallery[visitor_id] = VisitorModelEmbedding(
+                visitor_id=visitor_id,
+                embedding=normalized,
+                embedding_count=int(row["embedding_count"]),
+                model_name=row["model_name"],
+            )
+        return gallery
+
     def _best_match(self, embedding: np.ndarray) -> tuple[VisitorIdentity | None, float | None, float]:
         if not self._gallery:
             return None, None, 1.0
@@ -247,6 +342,24 @@ class UniqueVisitorRegistry:
         second_score = float(scores[int(order[1])]) if len(order) > 1 else -1.0
         return self._gallery[best_index], best_score, best_score - second_score
 
+    def _best_quality_match(
+        self,
+        embedding: np.ndarray | None,
+    ) -> tuple[VisitorIdentity | None, float | None, float]:
+        if embedding is None or not self._quality_gallery:
+            return None, None, 1.0
+
+        quality_entries = list(self._quality_gallery.values())
+        gallery_embeddings = np.stack([entry.embedding for entry in quality_entries]).astype(np.float32)
+        scores = gallery_embeddings @ embedding.astype(np.float32)
+        order = np.argsort(scores)[::-1]
+        best_index = int(order[0])
+        best_score = float(scores[best_index])
+        second_score = float(scores[int(order[1])]) if len(order) > 1 else -1.0
+        visitor_id = quality_entries[best_index].visitor_id
+        identity = next((item for item in self._gallery if item.visitor_id == visitor_id), None)
+        return identity, best_score, best_score - second_score
+
     def _update_identity(self, identity: VisitorIdentity, embedding: np.ndarray, now: datetime) -> None:
         updated_count = identity.embedding_count + 1
         updated_embedding = _normalize_embedding((identity.embedding * identity.embedding_count + embedding) / updated_count)
@@ -257,6 +370,38 @@ class UniqueVisitorRegistry:
         identity.embedding_count = updated_count
         identity.expires_at = self.expires_at_for(now).isoformat()
         self._persist_identity(identity, now)
+
+    def _update_quality_embedding(self, visitor_id: str, embedding: np.ndarray, now: datetime) -> None:
+        if self.quality_model_name is None:
+            return
+
+        existing = self._quality_gallery.get(visitor_id)
+        if existing is None:
+            updated_embedding = embedding
+            updated_count = 1
+        else:
+            updated_count = existing.embedding_count + 1
+            updated_embedding = _normalize_embedding(
+                (existing.embedding * existing.embedding_count + embedding) / updated_count
+            )
+            if updated_embedding is None:
+                return
+
+        entry = VisitorModelEmbedding(
+            visitor_id=visitor_id,
+            embedding=updated_embedding,
+            embedding_count=updated_count,
+            model_name=self.quality_model_name,
+        )
+        self._quality_gallery[visitor_id] = entry
+        self._session_store.upsert_visitor_model_embedding(
+            visitor_id=visitor_id,
+            model_name=self.quality_model_name,
+            embedding=updated_embedding.astype(np.float32).tobytes(),
+            embedding_dim=int(updated_embedding.size),
+            embedding_count=updated_count,
+            recorded_at=now.isoformat(),
+        )
 
     def _persist_identity(self, identity: VisitorIdentity, now: datetime) -> None:
         self._session_store.upsert_visitor_identity(

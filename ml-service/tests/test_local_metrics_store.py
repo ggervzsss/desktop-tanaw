@@ -90,6 +90,39 @@ class LocalMetricsStoreTest(unittest.TestCase):
             self.assertEqual(store.load_active_visitor_identities("2026-06-07", "2026-06-07T03:00:00+00:00"), [])
             self.assertEqual(store.metrics_summary()["total_events"], 1)
 
+    def test_secondary_model_embedding_is_persisted_with_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = LocalMetricsStore(str(Path(directory)))
+            store.upsert_visitor_identity(
+                visitor_id="visitor-1",
+                business_date="2026-06-07",
+                camera_id=1,
+                embedding=b"\x00" * 8,
+                embedding_dim=2,
+                embedding_count=1,
+                model_name="fast",
+                expires_at="2026-06-08T02:00:00+00:00",
+                recorded_at="2026-06-07T01:00:00+00:00",
+            )
+            store.upsert_visitor_model_embedding(
+                visitor_id="visitor-1",
+                model_name="quality",
+                embedding=b"\x01" * 8,
+                embedding_dim=2,
+                embedding_count=1,
+                recorded_at="2026-06-07T01:01:00+00:00",
+            )
+
+            rows = store.load_active_visitor_model_embeddings(
+                "2026-06-07",
+                "quality",
+                "2026-06-07T03:00:00+00:00",
+            )
+
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["visitor_id"], "visitor-1")
+            self.assertEqual(rows[0]["model_name"], "quality")
+
 
 def _event(direction: str, entry: int, exit: int, occupancy: int, is_unique_entry: bool | None = None) -> dict:
     payload = {

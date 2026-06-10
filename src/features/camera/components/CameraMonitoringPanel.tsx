@@ -41,7 +41,16 @@ export function CameraMonitoringPanel({
   const serviceOnline = health?.status === "ok";
   const serviceLabel = serviceOnline ? (health.running ? "ML Service Running" : "ML Service Ready") : "ML Service Offline";
   const cameraLabel = isProcessingThisCamera ? "Processing" : activeCam.status === "online" ? "Verified" : activeCam.status === "untested" ? "Untested" : "Stopped";
-  const reidLabel = health?.reid_status === "ready" ? `Unique ReID ${health.reid_gallery_size}` : health?.reid_status === "degraded" ? "Unique ReID Degraded" : health?.reid_model_loading ? "Unique ReID Loading" : "Unique ReID Pending";
+  const reidLabel =
+    health?.reid_status === "ready" && health.quality_reid_status === "ready"
+      ? `Hybrid ReID ${health.reid_gallery_size}`
+      : health?.reid_status === "ready"
+        ? `Fast ReID ${health.reid_gallery_size}`
+        : health?.reid_status === "degraded"
+          ? "Unique ReID Degraded"
+          : health?.reid_model_loading || health?.quality_reid_model_loading
+            ? "Unique ReID Loading"
+            : "Unique ReID Pending";
   const reidTone = health?.reid_status === "ready" ? "ok" : "neutral";
   const visibleTracks = detections.tracks.filter((track) => track.confidence >= activeCam.confidence);
   const activeTrackIds = new Set(visibleTracks.filter((track) => track.track_id > 0).map((track) => track.track_id));
@@ -74,7 +83,13 @@ export function CameraMonitoringPanel({
           <StatusPill icon={Activity} label={serviceLabel} tone={serviceOnline ? "ok" : "error"} />
           <StatusPill icon={Wifi} label={`Camera ${cameraLabel}`} tone={isProcessingThisCamera || activeCam.status === "online" ? "ok" : activeCam.status === "error" || activeCam.status === "offline" ? "error" : "neutral"} />
           {health && <StatusPill icon={Cpu} label={reidLabel} tone={reidTone} />}
-          {health && <StatusPill icon={Activity} label={`${health.processing_profile ?? "auto"} / Q${health.reid_queue_depth}`} tone={health.reid_tasks_dropped > 0 ? "error" : "neutral"} />}
+          {health && (
+            <StatusPill
+              icon={Activity}
+              label={`${health.processing_profile ?? "auto"} / F${health.reid_queue_depth} Q${health.quality_reid_queue_depth}`}
+              tone={health.reid_tasks_dropped > 0 || health.quality_reid_tasks_dropped > 0 ? "error" : "neutral"}
+            />
+          )}
           {serviceStatus?.pid && <span className="rounded-sm border border-gray-200 bg-gray-50 px-2 py-1 text-gray-500">PID {serviceStatus.pid}</span>}
         </div>
 

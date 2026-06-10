@@ -185,6 +185,86 @@ class UniqueVisitorRegistryTest(unittest.TestCase):
             self.assertTrue(decision.is_unique_entry)
             self.assertEqual(decision.reid_decision, "new")
 
+    def test_quality_embedding_overrides_conflicting_fast_match(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            registry = UniqueVisitorRegistry(
+                SessionStore(str(Path(directory))),
+                model_name="fast",
+                quality_model_name="quality",
+            )
+            now = _utc("2026-06-07T01:00:00+00:00")
+            first = registry.resolve_entry(
+                track_id=1,
+                camera_id=10,
+                embedding=_embedding([1.0, 0.0, 0.0]),
+                quality_embedding=_embedding([1.0, 0.0, 0.0]),
+                detection_confidence=0.9,
+                bbox=(10, 10, 80, 180),
+                now=now,
+            )
+            registry.resolve_entry(
+                track_id=2,
+                camera_id=10,
+                embedding=_embedding([0.0, 1.0, 0.0]),
+                quality_embedding=_embedding([0.0, 1.0, 0.0]),
+                detection_confidence=0.9,
+                bbox=(100, 10, 170, 180),
+                now=_utc("2026-06-07T01:05:00+00:00"),
+            )
+
+            decision = registry.resolve_entry(
+                track_id=3,
+                camera_id=10,
+                embedding=_embedding([0.0, 1.0, 0.0]),
+                quality_embedding=_embedding([1.0, 0.0, 0.0]),
+                detection_confidence=0.9,
+                bbox=(12, 10, 82, 180),
+                now=_utc("2026-06-07T01:10:00+00:00"),
+            )
+
+            self.assertFalse(decision.is_unique_entry)
+            self.assertEqual(decision.visitor_id, first.visitor_id)
+            self.assertEqual(decision.reid_decision, "matched_existing_quality")
+
+            registry.reset_session_tracks()
+            fast_only_repeat = registry.resolve_entry(
+                track_id=4,
+                camera_id=10,
+                embedding=_embedding([1.0, 0.0, 0.0]),
+                detection_confidence=0.9,
+                bbox=(14, 10, 84, 180),
+                now=_utc("2026-06-07T01:15:00+00:00"),
+            )
+            self.assertEqual(fast_only_repeat.visitor_id, first.visitor_id)
+
+    def test_late_quality_embedding_is_attached_to_track_visitor(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = SessionStore(str(Path(directory)))
+            registry = UniqueVisitorRegistry(store, model_name="fast", quality_model_name="quality")
+            registry.resolve_entry(
+                track_id=1,
+                camera_id=10,
+                embedding=_embedding([1.0, 0.0, 0.0]),
+                detection_confidence=0.9,
+                bbox=(10, 10, 80, 180),
+                now=_utc("2026-06-07T01:00:00+00:00"),
+            )
+
+            recorded = registry.record_quality_embedding_for_track(
+                1,
+                _embedding([0.0, 1.0, 0.0]),
+                now=_utc("2026-06-07T01:01:00+00:00"),
+            )
+
+            self.assertTrue(recorded)
+            self.assertEqual(registry.status()["reid_quality_gallery_size"], 1)
+            rows = store.load_active_visitor_model_embeddings(
+                "2026-06-07",
+                "quality",
+                "2026-06-07T01:02:00+00:00",
+            )
+            self.assertEqual(len(rows), 1)
+
 
 def _embedding(values: list[float]) -> np.ndarray:
     embedding = np.asarray(values, dtype=np.float32)

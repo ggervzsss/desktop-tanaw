@@ -123,8 +123,23 @@ class HealthResponse(BaseModel):
     reid_average_inference_ms: float | None = None
     reid_providers: list[str] = Field(default_factory=list)
     reid_gallery_size: int = 0
+    reid_quality_gallery_size: int = 0
     reid_business_date: str | None = None
     reid_last_cleanup_at: str | None = None
+    quality_reid_model_loaded: bool = False
+    quality_reid_model_ready: bool = False
+    quality_reid_model_loading: bool = False
+    quality_reid_status: str | None = None
+    quality_reid_model_path: str | None = None
+    quality_reid_error: str | None = None
+    quality_reid_average_inference_ms: float | None = None
+    quality_reid_providers: list[str] = Field(default_factory=list)
+    quality_reid_queue_depth: int = 0
+    quality_reid_tasks_pending: int = 0
+    quality_reid_tasks_dropped: int = 0
+    quality_reid_tasks_completed: int = 0
+    quality_reid_worker_p50_ms: float | None = None
+    quality_reid_worker_p95_ms: float | None = None
     processing_profile: str | None = None
     detector_image_size: int | None = None
     detector_p50_ms: float | None = None

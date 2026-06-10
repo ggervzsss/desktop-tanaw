@@ -86,10 +86,26 @@ class CameraProcessingManager:
         self._tracker = YoloPersonTracker()
         self._reidentifier = PersonReIdentifier()
         self._reid_worker = AsyncReIdWorker(self._reidentifier)
+        self._quality_reidentifier = PersonReIdentifier(
+            model_path="person_reid.onnx",
+            model_name="torchreid_osnet_ain_x1_0_msmt17_onnx",
+        )
+        self._quality_reid_worker = AsyncReIdWorker(self._quality_reidentifier, max_queue_size=4)
         self._appearance_buffer = TrackAppearanceBuffer()
+        self._quality_appearance_buffer = TrackAppearanceBuffer(
+            max_samples_per_track=2,
+            min_detection_confidence=0.60,
+            min_bbox_height_px=96,
+            max_edge_clip_fraction=0.25,
+            stop_when_full=True,
+        )
         self._identity_resolver = TrackIdentityResolver()
         self._session_store = SessionStore()
-        self._visitor_registry = UniqueVisitorRegistry(self._session_store, model_name=self._reidentifier.model_name)
+        self._visitor_registry = UniqueVisitorRegistry(
+            self._session_store,
+            model_name=self._reidentifier.model_name,
+            quality_model_name=self._quality_reidentifier.model_name,
+        )
         self._session_updated_at: str | None = None
         self._restoring_session = False
         self._effective_profile = "cpu"
@@ -135,6 +151,15 @@ class CameraProcessingManager:
             )
             self._counter.reset()
             self._appearance_buffer = TrackAppearanceBuffer(sample_interval_frames=max(1, int(round(processing_fps))))
+            self._quality_appearance_buffer = TrackAppearanceBuffer(
+                max_samples_per_track=2,
+                sample_interval_frames=max(1, int(round(processing_fps * 4.0))),
+                track_ttl_frames=max(1, int(round(processing_fps * 15.0))),
+                min_detection_confidence=0.60,
+                min_bbox_height_px=96,
+                max_edge_clip_fraction=0.25,
+                stop_when_full=True,
+            )
             self._identity_resolver = TrackIdentityResolver(lost_track_ttl_seconds=min(config.track_ttl_seconds, 3.0))
             self._visitor_registry.prepare(config.camera_id)
             self._visitor_registry.reset_session_tracks()
@@ -149,6 +174,7 @@ class CameraProcessingManager:
         try:
             self._tracker.warmup()
             self._reidentifier.warmup()
+            self._quality_reidentifier.warmup()
         except Exception as exc:
             safe_message = redact_stream_credentials(f"Unable to initialize ML model: {exc}")
             with self._raw_frame_condition:
@@ -164,6 +190,7 @@ class CameraProcessingManager:
             self._next_session_id += 1
             session = ProcessingSession(session_id=self._next_session_id, config=config, stop_event=threading.Event())
             self._reid_worker.begin_session(session.session_id)
+            self._quality_reid_worker.begin_session(session.session_id)
             self._tracker.reset_tracking()
             self._identity_resolver.reset()
             self._active_session = session
@@ -280,10 +307,26 @@ class CameraProcessingManager:
                 "processing_frames_skipped": self._processing_frames_skipped,
             }
         summary = self._session_store.metrics_summary(include_submitted=False)
+        quality_status = self._quality_reidentifier.status()
+        quality_worker_status = self._quality_reid_worker.status()
         return {
             **self._tracker.status(),
             **self._reidentifier.status(),
             **self._reid_worker.status(),
+            "quality_reid_model_loaded": quality_status["reid_model_loaded"],
+            "quality_reid_model_ready": quality_status["reid_model_ready"],
+            "quality_reid_model_loading": quality_status["reid_model_loading"],
+            "quality_reid_status": quality_status["reid_status"],
+            "quality_reid_model_path": quality_status["reid_model_path"],
+            "quality_reid_error": quality_status["reid_error"],
+            "quality_reid_average_inference_ms": quality_status["reid_average_inference_ms"],
+            "quality_reid_providers": quality_status["reid_providers"],
+            "quality_reid_queue_depth": quality_worker_status["reid_queue_depth"],
+            "quality_reid_tasks_pending": quality_worker_status["reid_tasks_pending"],
+            "quality_reid_tasks_dropped": quality_worker_status["reid_tasks_dropped"],
+            "quality_reid_tasks_completed": quality_worker_status["reid_tasks_completed"],
+            "quality_reid_worker_p50_ms": quality_worker_status["reid_worker_p50_ms"],
+            "quality_reid_worker_p95_ms": quality_worker_status["reid_worker_p95_ms"],
             **self._identity_resolver.status(),
             **self._visitor_registry.status(),
             **runtime_status,
@@ -628,6 +671,7 @@ class CameraProcessingManager:
         display_tracks: list[DisplayTrack] = []
         self._counter.begin_frame(now)
         self._appearance_buffer.begin_frame(self._counter.frame_index)
+        self._quality_appearance_buffer.begin_frame(self._counter.frame_index)
 
         for track in tracks:
             if not self._is_current_session(session):
@@ -703,7 +747,10 @@ class CameraProcessingManager:
         frame_height: int,
         now: float,
     ) -> None:
-        if not self._appearance_buffer.should_sample(track, frame_width, frame_height, self._counter.frame_index):
+        frame_index = self._counter.frame_index
+        sample_fast = self._appearance_buffer.should_sample(track, frame_width, frame_height, frame_index)
+        sample_quality = self._quality_appearance_buffer.should_sample(track, frame_width, frame_height, frame_index)
+        if not sample_fast and not sample_quality:
             return
 
         crop = self._crop_track(frame, track.bbox)
@@ -711,19 +758,33 @@ class CameraProcessingManager:
             return
 
         quality = self._appearance_buffer.quality_score(track, frame_width, frame_height)
-        submitted = self._reid_worker.submit(
-            session_id=session.session_id,
-            track_id=track.track_id,
-            source_track_id=track.source_track_id,
-            crop=crop,
-            quality=quality,
-            requested_at=now,
-        )
-        if submitted:
-            self._appearance_buffer.mark_sample_requested(track.track_id, self._counter.frame_index)
+        if sample_fast:
+            submitted = self._reid_worker.submit(
+                session_id=session.session_id,
+                track_id=track.track_id,
+                source_track_id=track.source_track_id,
+                crop=crop,
+                quality=quality,
+                requested_at=now,
+            )
+            if submitted:
+                self._appearance_buffer.mark_sample_requested(track.track_id, frame_index)
+
+        if sample_quality:
+            quality_submitted = self._quality_reid_worker.submit(
+                session_id=session.session_id,
+                track_id=track.track_id,
+                source_track_id=track.source_track_id,
+                crop=crop,
+                quality=self._quality_appearance_buffer.quality_score(track, frame_width, frame_height),
+                requested_at=now,
+            )
+            if quality_submitted:
+                self._quality_appearance_buffer.mark_sample_requested(track.track_id, frame_index)
 
     def _resolve_unique_entry(self, session: ProcessingSession, track: ResolvedTrack) -> VisitorDecision:
         embedding = self._appearance_buffer.embedding_for_track(track.track_id)
+        quality_embedding = self._quality_appearance_buffer.embedding_for_track(track.track_id)
 
         with self._lock:
             camera_id = self._config.camera_id if self._config else None
@@ -742,6 +803,7 @@ class CameraProcessingManager:
             track_id=track.track_id,
             camera_id=camera_id,
             embedding=embedding,
+            quality_embedding=quality_embedding,
             detection_confidence=track.confidence,
             bbox=track.bbox,
         )
@@ -769,7 +831,20 @@ class CameraProcessingManager:
                 continue
             self._counter.remap_track(resolution.remap_from, resolution.remap_to)
             self._appearance_buffer.remap_track(resolution.remap_from, resolution.remap_to)
+            self._quality_appearance_buffer.remap_track(resolution.remap_from, resolution.remap_to)
             self._visitor_registry.remap_session_track(resolution.remap_from, resolution.remap_to)
+
+        for result in self._quality_reid_worker.poll(session.session_id):
+            if result.embedding is None:
+                continue
+            track_id = self._identity_resolver.canonical_track_id(result.track_id)
+            self._quality_appearance_buffer.record_sample(
+                track_id,
+                result.embedding,
+                result.quality,
+                self._counter.frame_index,
+            )
+            self._visitor_registry.record_quality_embedding_for_track(track_id, result.embedding)
 
     def _crop_track(self, frame, bbox: tuple[int, int, int, int]):
         frame_height, frame_width = frame.shape[:2]
@@ -1019,24 +1094,32 @@ class CameraProcessingManager:
         return 960 if self._effective_profile == "accelerated" else 640
 
     def _configure_reid_locked(self) -> None:
-        desired_model_path = "person_reid.onnx" if self._effective_profile == "accelerated" else "person_reid_cpu.onnx"
-        desired_model_name = (
-            "torchreid_osnet_ain_x1_0_msmt17_onnx"
-            if self._effective_profile == "accelerated"
-            else "torchreid_osnet_x0_25_msmt17_onnx"
-        )
-        if self._reidentifier.model_path == desired_model_path:
+        fast_model_path = "person_reid_cpu.onnx"
+        fast_model_name = "torchreid_osnet_x0_25_msmt17_onnx"
+        quality_model_path = "person_reid.onnx"
+        quality_model_name = "torchreid_osnet_ain_x1_0_msmt17_onnx"
+        if (
+            self._reidentifier.model_path == fast_model_path
+            and self._quality_reidentifier.model_path == quality_model_path
+        ):
             return
 
         self._reid_worker.close()
+        self._quality_reid_worker.close()
         self._reidentifier = PersonReIdentifier(
-            model_path=desired_model_path,
-            model_name=desired_model_name,
+            model_path=fast_model_path,
+            model_name=fast_model_name,
+        )
+        self._quality_reidentifier = PersonReIdentifier(
+            model_path=quality_model_path,
+            model_name=quality_model_name,
         )
         self._reid_worker = AsyncReIdWorker(self._reidentifier)
+        self._quality_reid_worker = AsyncReIdWorker(self._quality_reidentifier, max_queue_size=4)
         self._visitor_registry = UniqueVisitorRegistry(
             self._session_store,
             model_name=self._reidentifier.model_name,
+            quality_model_name=self._quality_reidentifier.model_name,
         )
 
 

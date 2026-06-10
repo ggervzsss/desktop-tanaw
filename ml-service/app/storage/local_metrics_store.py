@@ -165,6 +165,45 @@ class LocalMetricsStore:
 
         return sighting_id
 
+    def upsert_visitor_model_embedding(
+        self,
+        *,
+        visitor_id: str,
+        model_name: str,
+        embedding: bytes,
+        embedding_dim: int,
+        embedding_count: int,
+        recorded_at: str | None = None,
+    ) -> None:
+        recorded_at = recorded_at or _utc_now()
+        with self._connection() as connection:
+            connection.execute(
+                """
+                insert into visitor_model_embeddings (
+                    visitor_id,
+                    model_name,
+                    representative_embedding,
+                    embedding_dim,
+                    embedding_count,
+                    updated_at
+                )
+                values (?, ?, ?, ?, ?, ?)
+                on conflict(visitor_id, model_name) do update set
+                    representative_embedding = excluded.representative_embedding,
+                    embedding_dim = excluded.embedding_dim,
+                    embedding_count = excluded.embedding_count,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    visitor_id,
+                    model_name,
+                    embedding,
+                    embedding_dim,
+                    embedding_count,
+                    recorded_at,
+                ),
+            )
+
     def load_active_visitor_identities(self, business_date: str, now: str | None = None) -> list[dict[str, Any]]:
         now = now or _utc_now()
         with self._connection() as connection:
@@ -187,6 +226,38 @@ class LocalMetricsStore:
                 order by last_seen_at desc
                 """,
                 (business_date, now),
+            ).fetchall()
+
+        return [dict(row) for row in rows]
+
+    def load_active_visitor_model_embeddings(
+        self,
+        business_date: str,
+        model_name: str,
+        now: str | None = None,
+    ) -> list[dict[str, Any]]:
+        now = now or _utc_now()
+        with self._connection() as connection:
+            rows = connection.execute(
+                """
+                select
+                    embeddings.visitor_id,
+                    identities.business_date,
+                    identities.camera_id,
+                    embeddings.representative_embedding,
+                    embeddings.embedding_dim,
+                    embeddings.embedding_count,
+                    embeddings.model_name,
+                    identities.expires_at
+                from visitor_model_embeddings as embeddings
+                join visitor_identities as identities
+                    on identities.visitor_id = embeddings.visitor_id
+                where identities.business_date = ?
+                    and identities.expires_at > ?
+                    and embeddings.model_name = ?
+                order by embeddings.updated_at desc
+                """,
+                (business_date, now, model_name),
             ).fetchall()
 
         return [dict(row) for row in rows]
@@ -433,6 +504,19 @@ class LocalMetricsStore:
 
                 create index if not exists idx_visitor_identities_business_date on visitor_identities(business_date);
                 create index if not exists idx_visitor_identities_expires_at on visitor_identities(expires_at);
+
+                create table if not exists visitor_model_embeddings (
+                    visitor_id text not null,
+                    model_name text not null,
+                    representative_embedding blob not null,
+                    embedding_dim integer not null,
+                    embedding_count integer not null default 1,
+                    updated_at text not null,
+                    primary key (visitor_id, model_name),
+                    foreign key (visitor_id) references visitor_identities(visitor_id) on delete cascade
+                );
+
+                create index if not exists idx_visitor_model_embeddings_model on visitor_model_embeddings(model_name);
 
                 create table if not exists visitor_sightings (
                     sighting_id text primary key,

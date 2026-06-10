@@ -28,6 +28,7 @@ class TrackAppearanceBuffer:
         min_detection_confidence: float = 0.45,
         min_bbox_height_px: int = 80,
         max_edge_clip_fraction: float = 0.30,
+        stop_when_full: bool = False,
     ) -> None:
         self.max_samples_per_track = max_samples_per_track
         self.sample_interval_frames = sample_interval_frames
@@ -35,6 +36,7 @@ class TrackAppearanceBuffer:
         self.min_detection_confidence = min_detection_confidence
         self.min_bbox_height_px = min_bbox_height_px
         self.max_edge_clip_fraction = max_edge_clip_fraction
+        self.stop_when_full = stop_when_full
         self._tracks: dict[int, TrackAppearance] = {}
 
     def begin_frame(self, frame_index: int) -> None:
@@ -55,6 +57,8 @@ class TrackAppearanceBuffer:
 
         state = self._tracks.setdefault(track.track_id, TrackAppearance(last_seen_frame=frame_index))
         state.last_seen_frame = frame_index
+        if self.stop_when_full and len(state.samples) >= self.max_samples_per_track:
+            return False
         if state.last_sampled_frame and frame_index - state.last_sampled_frame < self.sample_interval_frames:
             return False
 

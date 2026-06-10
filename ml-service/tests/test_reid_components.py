@@ -61,6 +61,13 @@ class ReIdComponentsTest(unittest.TestCase):
         self.assertAlmostEqual(float(np.linalg.norm(embedding)), 1.0, places=5)
         self.assertGreater(float(embedding[0]), float(embedding[1]))
 
+    def test_quality_buffer_stops_sampling_when_full(self) -> None:
+        buffer = TrackAppearanceBuffer(max_samples_per_track=1, stop_when_full=True)
+        track = _track(confidence=0.9, bbox=(10, 10, 90, 180))
+        buffer.record_sample(1, np.array([1.0, 0.0], dtype=np.float32), quality=0.9, frame_index=1)
+
+        self.assertFalse(buffer.should_sample(track, 200, 200, 2))
+
 
 def _track(confidence: float, bbox: tuple[int, int, int, int]) -> TrackResult:
     return TrackResult(

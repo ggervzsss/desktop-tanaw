@@ -86,8 +86,35 @@ class SessionStore:
     def append_visitor_sighting(self, payload: dict[str, Any], recorded_at: str | None = None) -> str:
         return self._metrics_store.append_visitor_sighting(payload, recorded_at)
 
+    def upsert_visitor_model_embedding(
+        self,
+        *,
+        visitor_id: str,
+        model_name: str,
+        embedding: bytes,
+        embedding_dim: int,
+        embedding_count: int,
+        recorded_at: str | None = None,
+    ) -> None:
+        self._metrics_store.upsert_visitor_model_embedding(
+            visitor_id=visitor_id,
+            model_name=model_name,
+            embedding=embedding,
+            embedding_dim=embedding_dim,
+            embedding_count=embedding_count,
+            recorded_at=recorded_at,
+        )
+
     def load_active_visitor_identities(self, business_date: str, now: str | None = None) -> list[dict[str, Any]]:
         return self._metrics_store.load_active_visitor_identities(business_date, now)
+
+    def load_active_visitor_model_embeddings(
+        self,
+        business_date: str,
+        model_name: str,
+        now: str | None = None,
+    ) -> list[dict[str, Any]]:
+        return self._metrics_store.load_active_visitor_model_embeddings(business_date, model_name, now)
 
     def cleanup_expired_visitor_metadata(self, now: str | None = None) -> int:
         return self._metrics_store.cleanup_expired_visitor_metadata(now)

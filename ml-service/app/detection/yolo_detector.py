@@ -24,7 +24,7 @@ class TrackResult:
 
 
 class YoloPersonTracker:
-    def __init__(self, model_path: str = "yolov8n.pt", image_size: int = 320, max_detections: int = 32) -> None:
+    def __init__(self, model_path: str = "yolov8n.pt", image_size: int = 480, max_detections: int = 32) -> None:
         self.model_path = model_path
         self.image_size = image_size
         self.max_detections = max_detections
@@ -84,7 +84,7 @@ class YoloPersonTracker:
             profile_changed = effective != self.effective_profile
             self.processing_profile = requested
             self.effective_profile = effective
-            self.image_size = 640 if effective == "accelerated" else 320
+            self.image_size = 640 if effective == "accelerated" else 480
             self.max_detections = 64 if effective == "accelerated" else 32
             if profile_changed and self._model is not None:
                 self._model = None
@@ -112,9 +112,11 @@ class YoloPersonTracker:
             raise FileNotFoundError(f"YOLO model file was not found at {requested_path}.")
 
         service_root = Path(__file__).resolve().parents[2]
-        openvino_path = service_root / "models" / "yolov8n_openvino_model"
-        if self.effective_profile == "cpu" and openvino_path.exists():
-            return str(openvino_path)
+        if self.effective_profile == "cpu":
+            for model_directory in ("yolov8n_480_openvino_model", "yolov8n_openvino_model"):
+                openvino_path = service_root / "models" / model_directory
+                if openvino_path.exists():
+                    return str(openvino_path)
         bundled_path = service_root / "models" / requested_path.name
         if bundled_path.exists():
             return str(bundled_path)
