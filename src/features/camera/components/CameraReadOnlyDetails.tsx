@@ -26,10 +26,20 @@ export function CameraReadOnlyDetails({ activeCam }: CameraReadOnlyDetailsProps)
           <DetailRow label="Assigned Zone" value={activeCam.zone} />
           <DetailRow label="Tripwire Mode" value="Entry / Exit Lines" />
           <DetailRow label="Confidence" value={activeCam.confidence.toFixed(2)} />
+          <DetailRow label="Processing" value={formatProcessingProfile(activeCam.processingProfile)} />
         </div>
       </div>
     </div>
   );
+}
+
+function formatProcessingProfile(profile: Camera["processingProfile"]) {
+  const labels: Record<Camera["processingProfile"], string> = {
+    accelerated: "GPU Accelerated",
+    auto: "Auto Detect",
+    cpu: "CPU Optimized",
+  };
+  return labels[profile];
 }
 
 type DetailRowProps = {

@@ -36,6 +36,25 @@ class LocalMetricsStoreTest(unittest.TestCase):
             self.assertEqual(summary["entries"], 2)
             self.assertEqual(summary["exits"], 1)
             self.assertEqual(summary["unique_count"], 1)
+            self.assertEqual(summary["confirmed_unique_count"], 0)
+            self.assertEqual(summary["degraded_unique_count"], 1)
+
+    def test_confirmed_and_degraded_unique_counts_are_separated(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = LocalMetricsStore(str(Path(directory)))
+            confirmed = _event("entry", entry=1, exit=0, occupancy=1, is_unique_entry=True)
+            confirmed["visitor_id"] = "visitor-1"
+            confirmed["reid_decision"] = "new"
+            degraded = _event("entry", entry=2, exit=0, occupancy=2, is_unique_entry=True)
+            degraded["reid_decision"] = "degraded_no_embedding"
+            store.append_count_event(confirmed)
+            store.append_count_event(degraded)
+
+            summary = store.metrics_summary()
+
+            self.assertEqual(summary["unique_count"], 2)
+            self.assertEqual(summary["confirmed_unique_count"], 1)
+            self.assertEqual(summary["degraded_unique_count"], 1)
 
     def test_expired_visitor_metadata_cleanup_preserves_count_events(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

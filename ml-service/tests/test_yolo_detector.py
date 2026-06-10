@@ -11,8 +11,8 @@ class YoloPersonTrackerTest(unittest.TestCase):
 
         model_path = Path(tracker._resolve_model_path())
 
-        self.assertEqual(model_path.name, "yolov8n.pt")
-        self.assertEqual(model_path.parent.name, "models")
+        self.assertIn(model_path.name, {"yolov8n.pt", "yolov8n_openvino_model"})
+        self.assertIn("models", model_path.parts)
         self.assertTrue(model_path.exists())
 
     def test_missing_absolute_model_path_raises_clear_error(self) -> None:
@@ -34,6 +34,14 @@ class YoloPersonTrackerTest(unittest.TestCase):
 
         self.assertTrue(status["model_loading"])
         self.assertFalse(status["model_loaded"])
+
+    def test_cpu_profile_uses_reduced_detector_input(self) -> None:
+        tracker = YoloPersonTracker()
+
+        effective = tracker.configure("cpu")
+
+        self.assertEqual(effective, "cpu")
+        self.assertEqual(tracker.image_size, 320)
 
 
 if __name__ == "__main__":

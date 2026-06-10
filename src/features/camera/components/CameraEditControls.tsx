@@ -89,6 +89,17 @@ export function CameraEditControls({ editForm, onEditFormChange }: CameraEditCon
               />
             </CompactField>
           </div>
+          <CompactField label="Processing Profile">
+            <select
+              value={editForm.processingProfile}
+              onChange={(event) => onEditFormChange({ ...editForm, processingProfile: event.target.value as Camera["processingProfile"] })}
+              className="w-full rounded-sm border border-gray-300 px-2 py-1.5 text-xs font-semibold text-gray-800 outline-none transition focus:border-[#065f46]"
+            >
+              <option value="auto">Auto Detect</option>
+              <option value="cpu">CPU Optimized</option>
+              <option value="accelerated">GPU Accelerated</option>
+            </select>
+          </CompactField>
           <div className="grid grid-cols-2 gap-2">
             <CompactField label="Username">
               <input

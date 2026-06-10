@@ -1,10 +1,17 @@
 from dataclasses import dataclass
+from collections import deque
+import os
 from pathlib import Path
 from threading import Lock
+from time import monotonic
+from tempfile import gettempdir
 
 import numpy as np
 
 from app.counting.geometry import Centroid, bbox_bottom_center, bbox_centroid
+
+os.environ.setdefault("MPLCONFIGDIR", str(Path(gettempdir()) / "tanaw-matplotlib"))
+os.environ.setdefault("YOLO_CONFIG_DIR", str(Path(gettempdir()) / "tanaw-ultralytics"))
 
 
 @dataclass(frozen=True)
@@ -17,10 +24,12 @@ class TrackResult:
 
 
 class YoloPersonTracker:
-    def __init__(self, model_path: str = "yolov8n.pt", image_size: int = 480, max_detections: int = 32) -> None:
+    def __init__(self, model_path: str = "yolov8n.pt", image_size: int = 320, max_detections: int = 32) -> None:
         self.model_path = model_path
         self.image_size = image_size
         self.max_detections = max_detections
+        self.processing_profile = "auto"
+        self.effective_profile = "cpu"
         self._model = None
         self._device = "cpu"
         self._use_half = False
@@ -29,8 +38,13 @@ class YoloPersonTracker:
         self._resolved_model_path: str | None = None
         self._lock = Lock()
         self._warmup_lock = Lock()
+        self._telemetry_lock = Lock()
+        self._inference_times_ms: deque[float] = deque(maxlen=128)
+        self._last_inference_at: float | None = None
+        self._inference_intervals: deque[float] = deque(maxlen=128)
 
-    def status(self) -> dict[str, bool | str | None]:
+    def status(self) -> dict[str, bool | float | int | str | None]:
+        telemetry = self._telemetry()
         if not self._lock.acquire(blocking=False):
             return {
                 "model_loaded": self._model is not None,
@@ -38,6 +52,9 @@ class YoloPersonTracker:
                 "device": self._device,
                 "model_path": self._resolved_model_path,
                 "model_loading": True,
+                "processing_profile": self.effective_profile,
+                "detector_image_size": self.image_size,
+                **telemetry,
             }
 
         try:
@@ -47,9 +64,45 @@ class YoloPersonTracker:
                 "device": self._device,
                 "model_path": self._resolved_model_path,
                 "model_loading": self._loading,
+                "processing_profile": self.effective_profile,
+                "detector_image_size": self.image_size,
+                **telemetry,
             }
         finally:
             self._lock.release()
+
+    def configure(self, processing_profile: str) -> str:
+        import torch
+
+        requested = processing_profile if processing_profile in {"auto", "cpu", "accelerated"} else "auto"
+        accelerated = torch.cuda.is_available()
+        effective = "accelerated" if requested == "accelerated" and accelerated else "cpu"
+        if requested == "auto":
+            effective = "accelerated" if accelerated else "cpu"
+
+        with self._lock:
+            profile_changed = effective != self.effective_profile
+            self.processing_profile = requested
+            self.effective_profile = effective
+            self.image_size = 640 if effective == "accelerated" else 320
+            self.max_detections = 64 if effective == "accelerated" else 32
+            if profile_changed and self._model is not None:
+                self._model = None
+                self._warmed_up = False
+                self._resolved_model_path = None
+        return effective
+
+    def reset_tracking(self) -> None:
+        model = self._model
+        predictor = getattr(model, "predictor", None) if model is not None else None
+        for tracker in getattr(predictor, "trackers", []) or []:
+            reset = getattr(tracker, "reset", None)
+            if callable(reset):
+                reset()
+        self._last_inference_at = None
+        with self._telemetry_lock:
+            self._inference_times_ms.clear()
+            self._inference_intervals.clear()
 
     def _resolve_model_path(self) -> str:
         requested_path = Path(self.model_path)
@@ -59,6 +112,9 @@ class YoloPersonTracker:
             raise FileNotFoundError(f"YOLO model file was not found at {requested_path}.")
 
         service_root = Path(__file__).resolve().parents[2]
+        openvino_path = service_root / "models" / "yolov8n_openvino_model"
+        if self.effective_profile == "cpu" and openvino_path.exists():
+            return str(openvino_path)
         bundled_path = service_root / "models" / requested_path.name
         if bundled_path.exists():
             return str(bundled_path)
@@ -79,7 +135,7 @@ class YoloPersonTracker:
             model_source = self._resolve_model_path()
             try:
                 self._loading = True
-                self._model = YOLO(model_source)
+                self._model = YOLO(model_source, task="detect")
                 self._resolved_model_path = model_source
                 self._device = "cuda:0" if torch.cuda.is_available() else "cpu"
                 self._use_half = self._device.startswith("cuda")
@@ -115,12 +171,19 @@ class YoloPersonTracker:
 
     def track_people(self, frame, confidence: float) -> list[TrackResult]:
         model = self._load_model()
+        started_at = monotonic()
         results = model.track(
             frame,
             persist=True,
-            tracker="bytetrack.yaml",
+            tracker=str(
+                Path(__file__).with_name(
+                    "tanaw_bytetrack_accelerated.yaml"
+                    if self.effective_profile == "accelerated"
+                    else "tanaw_bytetrack.yaml"
+                )
+            ),
             classes=[0],
-            conf=confidence,
+            conf=min(confidence, 0.10),
             device=self._device,
             half=self._use_half,
             imgsz=self.image_size,
@@ -128,6 +191,12 @@ class YoloPersonTracker:
             max_det=self.max_detections,
             verbose=False,
         )
+        completed_at = monotonic()
+        with self._telemetry_lock:
+            self._inference_times_ms.append((completed_at - started_at) * 1000.0)
+            if self._last_inference_at is not None:
+                self._inference_intervals.append(completed_at - self._last_inference_at)
+            self._last_inference_at = completed_at
 
         if not results:
             return []
@@ -156,3 +225,24 @@ class YoloPersonTracker:
             )
 
         return tracked
+
+    def _telemetry(self) -> dict[str, float | None]:
+        with self._telemetry_lock:
+            inference_times = sorted(self._inference_times_ms)
+            average_interval = (
+                sum(self._inference_intervals) / len(self._inference_intervals)
+                if self._inference_intervals
+                else None
+            )
+        return {
+            "detector_p50_ms": _percentile(inference_times, 0.50),
+            "detector_p95_ms": _percentile(inference_times, 0.95),
+            "analytics_fps": 1.0 / average_interval if average_interval and average_interval > 0 else None,
+        }
+
+
+def _percentile(values: list[float], quantile: float) -> float | None:
+    if not values:
+        return None
+    index = min(len(values) - 1, max(0, int(round((len(values) - 1) * quantile))))
+    return float(values[index])

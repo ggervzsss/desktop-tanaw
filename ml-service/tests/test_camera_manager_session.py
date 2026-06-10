@@ -139,6 +139,67 @@ class CameraProcessingManagerSessionTest(unittest.TestCase):
             self.assertEqual(summary["exits"], 0)
             self.assertEqual(summary["unique_count"], 0)
 
+    def test_raw_id_reset_during_crossing_keeps_stable_id_and_counts_once(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            manager = _manager_with_store(directory)
+            session = _session(1)
+            manager._tracker = _FakeTracker(
+                [
+                    [_track(11, (40, 20, 80, 180))],
+                    [_track(29, (88, 20, 128, 180))],
+                ]
+            )
+            with manager._lock:
+                manager._config = session.config
+                manager._active_session = session
+
+            frame = np.zeros((200, 200, 3), dtype=np.uint8)
+            first = manager._detect_and_count(session, frame, 0.35)[0]
+            second = manager._detect_and_count(session, frame, 0.35)[0]
+
+            self.assertEqual(first.track_id, second.track_id)
+            self.assertNotEqual(first.source_track_id, second.source_track_id)
+            self.assertEqual(second.direction, "entry")
+            self.assertEqual(manager.metrics_summary()["entries"], 1)
+
+    def test_low_confidence_track_is_kept_internal_but_not_displayed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            manager = _manager_with_store(directory)
+            session = _session(1)
+            manager._tracker = _FakeTracker([[_track(1, (50, 20, 90, 180), confidence=0.15)]])
+            with manager._lock:
+                manager._config = session.config
+                manager._active_session = session
+
+            frame = np.zeros((200, 200, 3), dtype=np.uint8)
+            tracks = manager._detect_and_count(session, frame, 0.35)
+
+            self.assertEqual(tracks, [])
+            self.assertEqual(manager._identity_resolver.status()["identity_active_tracks"], 1)
+
+    def test_unconfirmed_detection_is_visible_only_above_configured_confidence(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            manager = _manager_with_store(directory)
+            session = _session(1)
+            manager._tracker = _FakeTracker(
+                [
+                    [_track(-1, (50, 20, 90, 180), confidence=0.20)],
+                    [_track(-1, (50, 20, 90, 180), confidence=0.60)],
+                ]
+            )
+            with manager._lock:
+                manager._config = session.config
+                manager._active_session = session
+
+            frame = np.zeros((200, 200, 3), dtype=np.uint8)
+            self.assertEqual(manager._detect_and_count(session, frame, 0.35), [])
+            visible = manager._detect_and_count(session, frame, 0.35)
+
+            self.assertEqual(len(visible), 1)
+            self.assertEqual(visible[0].track_id, -1)
+            self.assertFalse(visible[0].counting_eligible)
+            self.assertEqual(manager._identity_resolver.status()["identity_active_tracks"], 0)
+
 
 def _session(session_id: int, **config_values) -> ProcessingSession:
     return ProcessingSession(
@@ -159,12 +220,12 @@ def _manager_with_store(directory: str) -> CameraProcessingManager:
     return manager
 
 
-def _track(track_id: int, bbox: tuple[int, int, int, int]) -> TrackResult:
+def _track(track_id: int, bbox: tuple[int, int, int, int], confidence: float = 0.9) -> TrackResult:
     x1, y1, x2, y2 = bbox
     return TrackResult(
         track_id=track_id,
         bbox=bbox,
-        confidence=0.9,
+        confidence=confidence,
         centroid=Centroid((x1 + x2) / 2, (y1 + y2) / 2),
         counting_point=Centroid((x1 + x2) / 2, y2),
     )

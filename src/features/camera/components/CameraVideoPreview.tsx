@@ -30,8 +30,9 @@ export function CameraVideoPreview({ activeCam, counts, detections, editForm, he
   const shouldShowConfigOverlay = isEditMode || !streamIsAvailable;
   const frameWidth = detections.frame_width ?? 0;
   const frameHeight = detections.frame_height ?? 0;
-  const activeTrackCount = detections.tracks.filter((track) => track.track_id > 0).length;
-  const fpsLabel = activeCam.fps > 0 ? `${activeCam.fps} FPS` : "FPS Adaptive";
+  const visibleTracks = detections.tracks.filter((track) => track.confidence >= activeCam.confidence);
+  const activeTrackCount = visibleTracks.filter((track) => track.track_id > 0).length;
+  const fpsLabel = health?.analytics_fps ? `${health.analytics_fps.toFixed(1)} AI FPS` : "AI FPS Adaptive";
 
   useEffect(() => {
     const container = containerRef.current;
@@ -94,7 +95,7 @@ export function CameraVideoPreview({ activeCam, counts, detections, editForm, he
       )}
       {streamIsAvailable && contentRect && frameWidth > 0 && frameHeight > 0 && (
         <div className="pointer-events-none absolute" style={{ height: contentRect.height, left: contentRect.left, top: contentRect.top, width: contentRect.width }}>
-          {detections.tracks.map((track) => {
+          {visibleTracks.map((track) => {
             const [x1, y1, x2, y2] = track.bbox;
             const left = clampPercent((Math.min(x1, x2) / frameWidth) * 100);
             const right = clampPercent((Math.max(x1, x2) / frameWidth) * 100);
@@ -104,7 +105,8 @@ export function CameraVideoPreview({ activeCam, counts, detections, editForm, he
             const height = Math.max(0, bottom - top);
             const isCrossing = track.direction === "entry" || track.direction === "exit";
             const isOutsideRoi = track.inside_roi === false;
-            const label = track.track_id > 0 ? `#${track.track_id}` : "PERSON";
+            const sourceSuffix = track.source_track_id !== track.track_id ? `/${track.source_track_id}` : "";
+            const label = track.track_id > 0 ? `#${track.track_id}${sourceSuffix}` : "PERSON";
             const tone = getTrackTone(isOutsideRoi, isCrossing);
 
             return (

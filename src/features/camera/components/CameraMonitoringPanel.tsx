@@ -43,9 +43,10 @@ export function CameraMonitoringPanel({
   const cameraLabel = isProcessingThisCamera ? "Processing" : activeCam.status === "online" ? "Verified" : activeCam.status === "untested" ? "Untested" : "Stopped";
   const reidLabel = health?.reid_status === "ready" ? `Unique ReID ${health.reid_gallery_size}` : health?.reid_status === "degraded" ? "Unique ReID Degraded" : health?.reid_model_loading ? "Unique ReID Loading" : "Unique ReID Pending";
   const reidTone = health?.reid_status === "ready" ? "ok" : "neutral";
-  const activeTrackIds = new Set(detections.tracks.filter((track) => track.track_id > 0).map((track) => track.track_id));
-  const currentVisitorIds = new Set(detections.tracks.map((track) => track.visitor_id).filter((visitorId): visitorId is string => Boolean(visitorId)));
-  const averageConfidence = detections.tracks.length > 0 ? detections.tracks.reduce((total, track) => total + track.confidence, 0) / detections.tracks.length : null;
+  const visibleTracks = detections.tracks.filter((track) => track.confidence >= activeCam.confidence);
+  const activeTrackIds = new Set(visibleTracks.filter((track) => track.track_id > 0).map((track) => track.track_id));
+  const currentVisitorIds = new Set(visibleTracks.map((track) => track.visitor_id).filter((visitorId): visitorId is string => Boolean(visitorId)));
+  const averageConfidence = visibleTracks.length > 0 ? visibleTracks.reduce((total, track) => total + track.confidence, 0) / visibleTracks.length : null;
 
   return (
     <div className="space-y-3">
@@ -58,9 +59,12 @@ export function CameraMonitoringPanel({
           <MetricBox icon={LogIn} label="Entry" value={counts.entry} tone="entry" />
           <MetricBox icon={LogOut} label="Exit" value={counts.exit} tone="exit" />
           <MetricBox icon={Users} label="Occupancy" value={counts.occupancy} tone="occupancy" />
-          <MetricBox icon={Users} label="Unique IDs" value={health?.reid_gallery_size ?? 0} tone="unique" />
+          <MetricBox icon={Users} label="Confirmed" value={health?.confirmed_unique_count ?? 0} tone="unique" />
+          <MetricBox icon={Users} label="Degraded" value={health?.degraded_unique_count ?? 0} tone="exit" />
           <MetricBox icon={Activity} label="Active IDs" value={activeTrackIds.size} tone="neutral" />
           <MetricBox icon={Cpu} label="Avg Conf." value={formatAverageConfidence(averageConfidence)} tone="neutral" />
+          <MetricBox icon={Activity} label="AI FPS" value={formatFps(health?.analytics_fps)} tone="neutral" />
+          <MetricBox icon={Cpu} label="Frame Age" value={formatLatency(health?.processing_frame_age_ms)} tone="neutral" />
         </div>
         {currentVisitorIds.size > 0 && <p className="mt-2 truncate text-[10px] font-semibold text-gray-500">Visible unique visitors: {currentVisitorIds.size}</p>}
       </div>
@@ -70,6 +74,7 @@ export function CameraMonitoringPanel({
           <StatusPill icon={Activity} label={serviceLabel} tone={serviceOnline ? "ok" : "error"} />
           <StatusPill icon={Wifi} label={`Camera ${cameraLabel}`} tone={isProcessingThisCamera || activeCam.status === "online" ? "ok" : activeCam.status === "error" || activeCam.status === "offline" ? "error" : "neutral"} />
           {health && <StatusPill icon={Cpu} label={reidLabel} tone={reidTone} />}
+          {health && <StatusPill icon={Activity} label={`${health.processing_profile ?? "auto"} / Q${health.reid_queue_depth}`} tone={health.reid_tasks_dropped > 0 ? "error" : "neutral"} />}
           {serviceStatus?.pid && <span className="rounded-sm border border-gray-200 bg-gray-50 px-2 py-1 text-gray-500">PID {serviceStatus.pid}</span>}
         </div>
 
@@ -166,4 +171,14 @@ function StatusPill({ icon: Icon, label, tone }: StatusPillProps) {
 function formatAverageConfidence(value: number | null) {
   if (value === null) return "--";
   return `${Math.round(value * 100)}%`;
+}
+
+function formatFps(value: number | null | undefined) {
+  if (value == null) return "--";
+  return value.toFixed(1);
+}
+
+function formatLatency(value: number | null | undefined) {
+  if (value == null) return "--";
+  return `${Math.round(value)}ms`;
 }

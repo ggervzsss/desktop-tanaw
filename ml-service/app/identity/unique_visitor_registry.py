@@ -79,6 +79,14 @@ class UniqueVisitorRegistry:
     def reset_session_tracks(self) -> None:
         self._track_visitors.clear()
 
+    def remap_session_track(self, previous_track_id: int, target_track_id: int) -> None:
+        visitor_id = self._track_visitors.pop(previous_track_id, None)
+        if visitor_id is not None and target_track_id not in self._track_visitors:
+            self._track_visitors[target_track_id] = visitor_id
+
+    def visitor_id_for_track(self, track_id: int) -> str | None:
+        return self._track_visitors.get(track_id)
+
     def cleanup_expired(self, now: datetime | None = None) -> int:
         now = now or datetime.now(timezone.utc)
         deleted_count = self._session_store.cleanup_expired_visitor_metadata(now.isoformat())
@@ -199,6 +207,8 @@ class UniqueVisitorRegistry:
         rows = self._session_store.load_active_visitor_identities(business_date, now.isoformat())
         gallery: list[VisitorIdentity] = []
         for row in rows:
+            if row.get("model_name") != self.model_name:
+                continue
             row_camera_id = row.get("camera_id")
             if camera_id is not None and row_camera_id != camera_id:
                 continue

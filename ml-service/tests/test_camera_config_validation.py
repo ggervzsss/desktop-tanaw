@@ -16,6 +16,11 @@ class CameraConfigValidationTest(unittest.TestCase):
 
         self.assertEqual(config.roi.width, 0.8)
 
+    def test_processing_profile_is_validated(self) -> None:
+        self.assertEqual(CameraStartRequest(stream_url="000", processing_profile="cpu").processing_profile, "cpu")
+        with self.assertRaises(ValidationError):
+            CameraStartRequest(stream_url="000", processing_profile="unsupported")
+
     def test_roi_outside_frame_is_rejected(self) -> None:
         with self.assertRaisesRegex(ValidationError, "ROI left \\+ width"):
             CameraStartRequest(stream_url="000", roi={"top": 0.1, "left": 0.4, "width": 0.8, "height": 0.8})

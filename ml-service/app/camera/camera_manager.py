@@ -25,8 +25,9 @@ from app.counting.tripwire_counter import TripwireCounter
 from app.counting.geometry import Centroid
 from app.detection.yolo_detector import YoloPersonTracker
 from app.identity import UniqueVisitorRegistry, VisitorDecision
-from app.reid import PersonReIdentifier, TrackAppearanceBuffer
+from app.reid import AsyncReIdWorker, PersonReIdentifier, TrackAppearanceBuffer
 from app.storage.session_store import SessionStore
+from app.tracking import ResolvedTrack, TrackIdentityResolver
 
 
 @dataclass
@@ -39,6 +40,7 @@ class RuntimeState:
 @dataclass(frozen=True)
 class DisplayTrack:
     track_id: int
+    source_track_id: int
     bbox: tuple[int, int, int, int]
     confidence: float
     centroid: tuple[int, int]
@@ -50,6 +52,9 @@ class DisplayTrack:
     identity_confidence: str | None = None
     inside_roi: bool | None = None
     counting_eligible: bool | None = None
+    identity_state: str | None = None
+    identity_score: float | None = None
+    identity_source: str | None = None
 
 
 @dataclass(frozen=True)
@@ -70,6 +75,7 @@ class CameraProcessingManager:
         self._raw_frame_condition = threading.Condition(self._lock)
         self._latest_raw_frame = None
         self._latest_raw_frame_id = 0
+        self._latest_raw_frame_captured_at: float | None = None
         self._latest_jpeg: bytes | None = None
         self._latest_stream_jpeg: bytes | None = None
         self._latest_stream_frame_id = 0
@@ -79,11 +85,16 @@ class CameraProcessingManager:
         self._counter = TripwireCounter()
         self._tracker = YoloPersonTracker()
         self._reidentifier = PersonReIdentifier()
+        self._reid_worker = AsyncReIdWorker(self._reidentifier)
         self._appearance_buffer = TrackAppearanceBuffer()
+        self._identity_resolver = TrackIdentityResolver()
         self._session_store = SessionStore()
         self._visitor_registry = UniqueVisitorRegistry(self._session_store, model_name=self._reidentifier.model_name)
         self._session_updated_at: str | None = None
         self._restoring_session = False
+        self._effective_profile = "cpu"
+        self._processing_frame_age_ms: float | None = None
+        self._processing_frames_skipped = 0
 
     @property
     def running(self) -> bool:
@@ -106,20 +117,29 @@ class CameraProcessingManager:
         self.stop()
 
         with self._lock:
+            self._effective_profile = self._tracker.configure(config.processing_profile)
+            self._configure_reid_locked()
+            processing_fps = self._processing_fps(config)
             self._config = config
             self._counter = TripwireCounter(
                 tripwire_position=config.tripwire_position,
                 entry_line=self._normalized_line(config.entry_line),
                 exit_line=self._normalized_line(config.exit_line),
                 reverse_direction=config.reverse_direction,
-                event_cooldown_frames=_seconds_to_frames(config.event_cooldown_seconds, config.processing_fps),
-                paired_line_max_gap_frames=_seconds_to_frames(config.paired_line_max_gap_seconds, config.processing_fps),
-                track_ttl_frames=_seconds_to_frames(config.track_ttl_seconds, config.processing_fps),
+                event_cooldown_frames=_seconds_to_frames(config.event_cooldown_seconds, processing_fps),
+                paired_line_max_gap_frames=_seconds_to_frames(config.paired_line_max_gap_seconds, processing_fps),
+                track_ttl_frames=_seconds_to_frames(config.track_ttl_seconds, processing_fps),
+                event_cooldown_seconds=config.event_cooldown_seconds,
+                paired_line_max_gap_seconds=config.paired_line_max_gap_seconds,
+                track_ttl_seconds=config.track_ttl_seconds,
             )
             self._counter.reset()
-            self._appearance_buffer = TrackAppearanceBuffer()
+            self._appearance_buffer = TrackAppearanceBuffer(sample_interval_frames=max(1, int(round(processing_fps))))
+            self._identity_resolver = TrackIdentityResolver(lost_track_ttl_seconds=min(config.track_ttl_seconds, 3.0))
             self._visitor_registry.prepare(config.camera_id)
             self._visitor_registry.reset_session_tracks()
+            self._processing_frame_age_ms = None
+            self._processing_frames_skipped = 0
             self._latest_jpeg = self._build_status_frame("Initializing ML model...")
             self._latest_stream_jpeg = self._latest_jpeg
             self._latest_stream_frame_id += 1
@@ -143,6 +163,9 @@ class CameraProcessingManager:
         with self._lock:
             self._next_session_id += 1
             session = ProcessingSession(session_id=self._next_session_id, config=config, stop_event=threading.Event())
+            self._reid_worker.begin_session(session.session_id)
+            self._tracker.reset_tracking()
+            self._identity_resolver.reset()
             self._active_session = session
             self._config = config
             self._latest_jpeg = self._build_status_frame("Starting camera processing...")
@@ -151,6 +174,7 @@ class CameraProcessingManager:
             self._state = RuntimeState(running=True, status="running", error=None)
             self._latest_raw_frame = None
             self._latest_raw_frame_id = 0
+            self._latest_raw_frame_captured_at = None
             self._latest_tracks = []
             self._reader_thread = threading.Thread(target=self._capture_loop, args=(session,), name="tanaw-camera-reader", daemon=True)
             self._processing_thread = threading.Thread(target=self._processing_loop, args=(session,), name="tanaw-camera-processing", daemon=True)
@@ -179,6 +203,7 @@ class CameraProcessingManager:
             self._processing_thread = None
             self._stream_thread = None
             self._latest_raw_frame = None
+            self._latest_raw_frame_captured_at = None
             self._latest_tracks = []
             self._state.running = False
             if self._state.status != "error":
@@ -211,6 +236,7 @@ class CameraProcessingManager:
                 "tracks": [
                     {
                         "track_id": track.track_id,
+                        "source_track_id": track.source_track_id,
                         "bbox": track.bbox,
                         "confidence": track.confidence,
                         "centroid": track.centroid,
@@ -222,6 +248,9 @@ class CameraProcessingManager:
                         "identity_confidence": track.identity_confidence,
                         "inside_roi": track.inside_roi,
                         "counting_eligible": track.counting_eligible,
+                        "identity_state": track.identity_state,
+                        "identity_score": track.identity_score,
+                        "identity_source": track.identity_source,
                     }
                     for track in self._latest_tracks
                 ],
@@ -245,10 +274,21 @@ class CameraProcessingManager:
         return self._session_store.metrics_summary(include_submitted=include_submitted)
 
     def model_status(self) -> dict:
+        with self._lock:
+            runtime_status = {
+                "processing_frame_age_ms": self._processing_frame_age_ms,
+                "processing_frames_skipped": self._processing_frames_skipped,
+            }
+        summary = self._session_store.metrics_summary(include_submitted=False)
         return {
             **self._tracker.status(),
             **self._reidentifier.status(),
+            **self._reid_worker.status(),
+            **self._identity_resolver.status(),
             **self._visitor_registry.status(),
+            **runtime_status,
+            "confirmed_unique_count": summary["confirmed_unique_count"],
+            "degraded_unique_count": summary["degraded_unique_count"],
         }
 
     def record_report_submission(self, report_id: str, period: str, notes: str | None = None, payload: dict | None = None) -> dict:
@@ -350,7 +390,7 @@ class CameraProcessingManager:
         config = session.config
         failed_reads = 0
         last_error = "Camera snapshot endpoint stopped returning frames."
-        frame_interval = 1.0 / max(config.processing_fps, 1.0)
+        frame_interval = 1.0 / self._processing_fps(config)
 
         try:
             while not session.stop_event.is_set() and self._is_current_session(session):
@@ -369,7 +409,7 @@ class CameraProcessingManager:
                         return
                 else:
                     failed_reads = 0
-                    frame = self._resize_for_processing(frame, config.max_frame_width)
+                    frame = self._resize_for_processing(frame, self._max_frame_width(config))
                     self._publish_raw_frame(session, frame)
 
                 elapsed = time.monotonic() - started_at
@@ -390,7 +430,7 @@ class CameraProcessingManager:
                 if session.stop_event.is_set() or not self._is_current_session(session):
                     break
 
-                frame = self._resize_for_processing(frame, config.max_frame_width)
+                frame = self._resize_for_processing(frame, self._max_frame_width(config))
                 self._publish_raw_frame(session, frame)
 
             if not session.stop_event.is_set() and self._is_current_session(session):
@@ -423,7 +463,7 @@ class CameraProcessingManager:
                     continue
 
                 failed_reads = 0
-                frame = self._resize_for_processing(frame, config.max_frame_width)
+                frame = self._resize_for_processing(frame, self._max_frame_width(config))
                 self._publish_raw_frame(session, frame)
         except Exception as exc:
             self._set_session_error(session, redact_stream_credentials(str(exc)))
@@ -433,12 +473,13 @@ class CameraProcessingManager:
                 if self._is_current_session_locked(session) and self._state.status != "error":
                     self._state.status = "stopped"
 
-    def _publish_raw_frame(self, session: ProcessingSession, frame) -> None:
+    def _publish_raw_frame(self, session: ProcessingSession, frame, captured_at: float | None = None) -> None:
         with self._raw_frame_condition:
             if not self._is_current_session_locked(session):
                 return
             self._latest_raw_frame = frame
             self._latest_raw_frame_id += 1
+            self._latest_raw_frame_captured_at = captured_at if captured_at is not None else time.monotonic()
             self._state.status = "running"
             self._state.error = None
             self._raw_frame_condition.notify_all()
@@ -449,7 +490,7 @@ class CameraProcessingManager:
             return
 
         last_processed_frame_id = 0
-        frame_interval = 1.0 / max(config.processing_fps, 1.0)
+        frame_interval = 1.0 / self._processing_fps(config)
         last_cleanup_at = time.monotonic()
 
         try:
@@ -459,12 +500,13 @@ class CameraProcessingManager:
                     self._visitor_registry.cleanup_expired()
                     last_cleanup_at = time.monotonic()
 
-                frame, frame_id = self._wait_for_latest_frame(session, last_processed_frame_id)
+                frame, frame_id, captured_at = self._wait_for_latest_frame(session, last_processed_frame_id)
                 if frame is None:
                     continue
 
                 started_at = time.monotonic()
                 tracks = self._detect_and_count(session, frame, config.confidence)
+                skipped_frames = max(0, frame_id - last_processed_frame_id - 1)
                 last_processed_frame_id = frame_id
 
                 with self._lock:
@@ -473,6 +515,9 @@ class CameraProcessingManager:
                     self._latest_tracks = tracks
                     self._state.status = "running"
                     self._state.error = None
+                    self._processing_frames_skipped += skipped_frames
+                    if captured_at is not None:
+                        self._processing_frame_age_ms = max(0.0, (started_at - captured_at) * 1000.0)
 
                 elapsed = time.monotonic() - started_at
                 remaining = frame_interval - elapsed
@@ -567,48 +612,77 @@ class CameraProcessingManager:
             )
 
             if session.stop_event.is_set() or not self._is_current_session_locked(session) or self._latest_raw_frame is None:
-                return None, last_processed_frame_id
+                return None, last_processed_frame_id, None
 
-            return self._latest_raw_frame.copy(), self._latest_raw_frame_id
+            return self._latest_raw_frame.copy(), self._latest_raw_frame_id, self._latest_raw_frame_captured_at
 
     def _detect_and_count(self, session: ProcessingSession, frame, confidence: float) -> list[DisplayTrack]:
         frame_height, frame_width = frame.shape[:2]
-        tracks = self._tracker.track_people(frame, confidence)
+        now = time.monotonic()
+        self._apply_reid_results(session, now)
+        source_tracks = self._tracker.track_people(frame, confidence)
         if not self._is_current_session(session):
             return []
+        tracks = self._identity_resolver.resolve(source_tracks, now, frame_width, frame_height)
 
         display_tracks: list[DisplayTrack] = []
-        self._counter.begin_frame()
+        self._counter.begin_frame(now)
         self._appearance_buffer.begin_frame(self._counter.frame_index)
 
         for track in tracks:
             if not self._is_current_session(session):
                 return []
+            if track.confidence < confidence:
+                continue
 
             inside_roi = self._point_inside_roi(track.counting_point, frame_width, frame_height, session.config)
-            counting_eligible = track.track_id > 0 and inside_roi
+            counting_eligible = inside_roi
             if counting_eligible:
-                self._collect_track_embedding(frame, track, frame_width, frame_height)
+                self._schedule_track_embedding(session, frame, track, frame_width, frame_height, now)
             direction = self._counter.update(track.track_id, track.counting_point, frame_width, frame_height) if counting_eligible else None
             visitor_decision = None
+            visitor_id = self._visitor_registry.visitor_id_for_track(track.track_id)
             if direction is not None:
                 if direction == "entry":
-                    visitor_decision = self._resolve_unique_entry(session, frame, track)
-                self._persist_count_event(session, track.track_id, direction, visitor_decision)
+                    visitor_decision = self._resolve_unique_entry(session, track)
+                    visitor_id = visitor_decision.visitor_id
+                self._persist_count_event(session, track, direction, visitor_decision)
             display_tracks.append(
                 DisplayTrack(
                     track_id=track.track_id,
+                    source_track_id=track.source_track_id,
                     bbox=track.bbox,
                     confidence=track.confidence,
                     centroid=(int(track.centroid.x), int(track.centroid.y)),
                     direction=direction,
-                    visitor_id=visitor_decision.visitor_id if visitor_decision else None,
+                    visitor_id=visitor_id,
                     is_unique_entry=visitor_decision.is_unique_entry if visitor_decision else None,
                     reid_score=visitor_decision.reid_score if visitor_decision else None,
                     reid_decision=visitor_decision.reid_decision if visitor_decision else None,
                     identity_confidence=visitor_decision.identity_confidence if visitor_decision else None,
                     inside_roi=inside_roi,
                     counting_eligible=counting_eligible,
+                    identity_state=track.identity_state,
+                    identity_score=track.identity_score,
+                    identity_source=track.identity_source,
+                )
+            )
+
+        for track in source_tracks:
+            if track.track_id > 0 or track.confidence < confidence:
+                continue
+            inside_roi = self._point_inside_roi(track.counting_point, frame_width, frame_height, session.config)
+            display_tracks.append(
+                DisplayTrack(
+                    track_id=track.track_id,
+                    source_track_id=track.track_id,
+                    bbox=track.bbox,
+                    confidence=track.confidence,
+                    centroid=(int(track.centroid.x), int(track.centroid.y)),
+                    inside_roi=inside_roi,
+                    counting_eligible=False,
+                    identity_state="unconfirmed",
+                    identity_source="detector",
                 )
             )
 
@@ -620,24 +694,36 @@ class CameraProcessingManager:
         y = point.y / max(frame_height, 1)
         return roi.left <= x <= roi.left + roi.width and roi.top <= y <= roi.top + roi.height
 
-    def _collect_track_embedding(self, frame, track, frame_width: int, frame_height: int) -> None:
+    def _schedule_track_embedding(
+        self,
+        session: ProcessingSession,
+        frame,
+        track: ResolvedTrack,
+        frame_width: int,
+        frame_height: int,
+        now: float,
+    ) -> None:
         if not self._appearance_buffer.should_sample(track, frame_width, frame_height, self._counter.frame_index):
             return
 
-        result = self._reidentifier.embed(frame, track.bbox)
-        if result is None:
+        crop = self._crop_track(frame, track.bbox)
+        if crop is None:
             return
 
         quality = self._appearance_buffer.quality_score(track, frame_width, frame_height)
-        self._appearance_buffer.record_sample(track.track_id, result.embedding, quality, self._counter.frame_index)
+        submitted = self._reid_worker.submit(
+            session_id=session.session_id,
+            track_id=track.track_id,
+            source_track_id=track.source_track_id,
+            crop=crop,
+            quality=quality,
+            requested_at=now,
+        )
+        if submitted:
+            self._appearance_buffer.mark_sample_requested(track.track_id, self._counter.frame_index)
 
-    def _resolve_unique_entry(self, session: ProcessingSession, frame, track) -> VisitorDecision:
+    def _resolve_unique_entry(self, session: ProcessingSession, track: ResolvedTrack) -> VisitorDecision:
         embedding = self._appearance_buffer.embedding_for_track(track.track_id)
-        if embedding is None:
-            result = self._reidentifier.embed(frame, track.bbox)
-            if result is not None:
-                embedding = result.embedding
-                self._appearance_buffer.record_sample(track.track_id, result.embedding, track.confidence, self._counter.frame_index)
 
         with self._lock:
             camera_id = self._config.camera_id if self._config else None
@@ -659,6 +745,42 @@ class CameraProcessingManager:
             detection_confidence=track.confidence,
             bbox=track.bbox,
         )
+
+    def _apply_reid_results(self, session: ProcessingSession, now: float) -> None:
+        for result in self._reid_worker.poll(session.session_id):
+            if result.embedding is None:
+                continue
+            canonical_track_id = self._identity_resolver.canonical_track_id(result.track_id)
+            resolution = self._identity_resolver.record_embedding(
+                result.source_track_id,
+                canonical_track_id,
+                result.embedding,
+                now,
+            )
+            if resolution is None:
+                continue
+            self._appearance_buffer.record_sample(
+                resolution.track_id,
+                result.embedding,
+                result.quality,
+                self._counter.frame_index,
+            )
+            if resolution.remap_from is None or resolution.remap_to is None:
+                continue
+            self._counter.remap_track(resolution.remap_from, resolution.remap_to)
+            self._appearance_buffer.remap_track(resolution.remap_from, resolution.remap_to)
+            self._visitor_registry.remap_session_track(resolution.remap_from, resolution.remap_to)
+
+    def _crop_track(self, frame, bbox: tuple[int, int, int, int]):
+        frame_height, frame_width = frame.shape[:2]
+        x1, y1, x2, y2 = bbox
+        x1 = max(0, min(frame_width - 1, x1))
+        y1 = max(0, min(frame_height - 1, y1))
+        x2 = max(0, min(frame_width, x2))
+        y2 = max(0, min(frame_height, y2))
+        if x2 <= x1 or y2 <= y1:
+            return None
+        return frame[y1:y2, x1:x2].copy()
 
     def _render_display_frame(
         self,
@@ -692,7 +814,12 @@ class CameraProcessingManager:
 
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
             cv2.circle(frame, track.centroid, 4, (250, 204, 21), -1)
-            self._draw_track_label(frame, x1, y1, f"#{track.track_id} - {track.confidence * 100:.0f}%", color)
+            if track.track_id > 0:
+                source_suffix = f"/{track.source_track_id}" if track.source_track_id != track.track_id else ""
+                label = f"#{track.track_id}{source_suffix}"
+            else:
+                label = "PERSON"
+            self._draw_track_label(frame, x1, y1, f"{label} - {track.confidence * 100:.0f}%", color)
 
         return frame
 
@@ -792,7 +919,13 @@ class CameraProcessingManager:
         cv2.putText(frame, message[:72], (90, 288), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (203, 213, 225), 2, cv2.LINE_AA)
         return self._encode_frame(frame)
 
-    def _persist_count_event(self, session: ProcessingSession, track_id: int, direction: str, visitor_decision: VisitorDecision | None = None) -> None:
+    def _persist_count_event(
+        self,
+        session: ProcessingSession,
+        track: ResolvedTrack,
+        direction: str,
+        visitor_decision: VisitorDecision | None = None,
+    ) -> None:
         with self._lock:
             if not self._is_current_session_locked(session):
                 return
@@ -805,7 +938,11 @@ class CameraProcessingManager:
                         "camera_id": self._config.camera_id if self._config else None,
                         "camera_name": self._config.camera_name if self._config else None,
                         "direction": direction,
-                        "track_id": track_id,
+                        "track_id": track.track_id,
+                        "source_track_id": track.source_track_id,
+                        "identity_state": track.identity_state,
+                        "identity_score": track.identity_score,
+                        "identity_source": track.identity_source,
                         **visitor_fields,
                         "counts": counts,
                     }
@@ -870,6 +1007,37 @@ class CameraProcessingManager:
                 self._state.status = payload["status"]
             if isinstance(payload.get("error"), str) or payload.get("error") is None:
                 self._state.error = payload.get("error")
+
+    def _processing_fps(self, config: CameraStartRequest) -> float:
+        if config.processing_fps is not None:
+            return max(config.processing_fps, 1.0)
+        return 15.0 if self._effective_profile == "accelerated" else 8.0
+
+    def _max_frame_width(self, config: CameraStartRequest) -> int:
+        if config.max_frame_width is not None:
+            return config.max_frame_width
+        return 960 if self._effective_profile == "accelerated" else 640
+
+    def _configure_reid_locked(self) -> None:
+        desired_model_path = "person_reid.onnx" if self._effective_profile == "accelerated" else "person_reid_cpu.onnx"
+        desired_model_name = (
+            "torchreid_osnet_ain_x1_0_msmt17_onnx"
+            if self._effective_profile == "accelerated"
+            else "torchreid_osnet_x0_25_msmt17_onnx"
+        )
+        if self._reidentifier.model_path == desired_model_path:
+            return
+
+        self._reid_worker.close()
+        self._reidentifier = PersonReIdentifier(
+            model_path=desired_model_path,
+            model_name=desired_model_name,
+        )
+        self._reid_worker = AsyncReIdWorker(self._reidentifier)
+        self._visitor_registry = UniqueVisitorRegistry(
+            self._session_store,
+            model_name=self._reidentifier.model_name,
+        )
 
 
 def _safe_int(value) -> int:

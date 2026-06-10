@@ -6,7 +6,10 @@ from urllib.parse import urlparse, urlunparse
 
 os.environ.setdefault("OPENCV_FFMPEG_LOGLEVEL", "16")
 os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
-os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp|stimeout;5000000|max_delay;500000")
+os.environ.setdefault(
+    "OPENCV_FFMPEG_CAPTURE_OPTIONS",
+    "rtsp_transport;tcp|stimeout;5000000|max_delay;0|fflags;nobuffer|flags;low_delay",
+)
 
 import cv2
 import numpy as np
@@ -43,7 +46,7 @@ def open_capture(stream_url: str):
 
 
 def _configure_capture(capture) -> None:
-    capture.set(cv2.CAP_PROP_BUFFERSIZE, 2)
+    capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
     if hasattr(cv2, "CAP_PROP_OPEN_TIMEOUT_MSEC"):
         capture.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, OPEN_TIMEOUT_MS)

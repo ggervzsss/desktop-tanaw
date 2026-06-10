@@ -16,9 +16,9 @@ class EmbeddingResult:
 class PersonReIdentifier:
     def __init__(
         self,
-        model_path: str = "person_reid.onnx",
+        model_path: str = "person_reid_cpu.onnx",
         input_size: tuple[int, int] = (128, 256),
-        model_name: str = "torchreid_osnet_ain_x1_0_msmt17_onnx",
+        model_name: str = "torchreid_osnet_x0_25_msmt17_onnx",
         mask_head_region: bool = False,
     ) -> None:
         self.model_path = model_path
@@ -28,6 +28,7 @@ class PersonReIdentifier:
         self._session = None
         self._input_name: str | None = None
         self._output_name: str | None = None
+        self._providers: list[str] = []
         self._resolved_model_path: str | None = None
         self._status = "not_loaded"
         self._error: str | None = None
@@ -37,7 +38,7 @@ class PersonReIdentifier:
         self._inference_count = 0
         self._lock = Lock()
 
-    def status(self) -> dict[str, bool | int | float | str | None]:
+    def status(self) -> dict[str, bool | int | float | str | list[str] | None]:
         if not self._lock.acquire(blocking=False):
             return {
                 "reid_model_loaded": self._session is not None,
@@ -47,6 +48,7 @@ class PersonReIdentifier:
                 "reid_model_path": self._resolved_model_path,
                 "reid_error": self._error,
                 "reid_average_inference_ms": self._average_inference_ms(),
+                "reid_providers": list(self._providers),
             }
 
         try:
@@ -58,6 +60,7 @@ class PersonReIdentifier:
                 "reid_model_path": self._resolved_model_path,
                 "reid_error": self._error,
                 "reid_average_inference_ms": self._average_inference_ms(),
+                "reid_providers": list(self._providers),
             }
         finally:
             self._lock.release()
@@ -124,7 +127,17 @@ class PersonReIdentifier:
             import onnxruntime as ort
 
             model_source = self._resolve_model_path()
-            session = ort.InferenceSession(model_source, providers=["CPUExecutionProvider"])
+            available_providers = ort.get_available_providers()
+            preferred_providers = [
+                provider
+                for provider in ("CUDAExecutionProvider", "OpenVINOExecutionProvider", "CPUExecutionProvider")
+                if provider in available_providers
+            ]
+            session_options = ort.SessionOptions()
+            session_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+            session_options.intra_op_num_threads = 1 if preferred_providers == ["CPUExecutionProvider"] else 0
+            session_options.inter_op_num_threads = 1
+            session = ort.InferenceSession(model_source, sess_options=session_options, providers=preferred_providers)
             input_name = session.get_inputs()[0].name
             output_name = session.get_outputs()[0].name
         except Exception as exc:
@@ -140,6 +153,7 @@ class PersonReIdentifier:
             self._session = session
             self._input_name = input_name
             self._output_name = output_name
+            self._providers = session.get_providers()
             self._resolved_model_path = model_source
             self._status = "loaded"
             self._error = None
@@ -157,6 +171,11 @@ class PersonReIdentifier:
         bundled_path = service_root / "models" / requested_path.name
         if bundled_path.exists():
             return str(bundled_path)
+
+        fallback_path = service_root / "models" / "person_reid.onnx"
+        if requested_path.name == "person_reid_cpu.onnx" and fallback_path.exists():
+            self.model_name = "torchreid_osnet_ain_x1_0_msmt17_onnx"
+            return str(fallback_path)
 
         raise FileNotFoundError(
             f"ReID model file was not found at {bundled_path}. "

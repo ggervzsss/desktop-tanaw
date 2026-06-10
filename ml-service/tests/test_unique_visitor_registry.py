@@ -158,6 +158,33 @@ class UniqueVisitorRegistryTest(unittest.TestCase):
             self.assertEqual(same_track_after_reset.reid_decision, "new")
             self.assertNotEqual(same_track_after_reset.visitor_id, first.visitor_id)
 
+    def test_gallery_ignores_embeddings_from_another_model_version(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = SessionStore(str(Path(directory)))
+            now = _utc("2026-06-07T01:00:00+00:00")
+            old_registry = UniqueVisitorRegistry(store, model_name="old-model")
+            old_registry.resolve_entry(
+                track_id=1,
+                camera_id=10,
+                embedding=_embedding([1.0, 0.0, 0.0]),
+                detection_confidence=0.9,
+                bbox=(10, 10, 80, 180),
+                now=now,
+            )
+
+            new_registry = UniqueVisitorRegistry(store, model_name="new-model")
+            decision = new_registry.resolve_entry(
+                track_id=2,
+                camera_id=10,
+                embedding=_embedding([1.0, 0.0, 0.0]),
+                detection_confidence=0.9,
+                bbox=(10, 10, 80, 180),
+                now=_utc("2026-06-07T01:05:00+00:00"),
+            )
+
+            self.assertTrue(decision.is_unique_entry)
+            self.assertEqual(decision.reid_decision, "new")
+
 
 def _embedding(values: list[float]) -> np.ndarray:
     embedding = np.asarray(values, dtype=np.float32)

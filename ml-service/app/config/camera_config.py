@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 CameraType = Literal["IP_WEBCAM", "RTSP_CCTV", "USB_WEBCAM", "ONVIF_CCTV"]
+ProcessingProfile = Literal["auto", "cpu", "accelerated"]
 
 
 class TripwirePoint(BaseModel):
@@ -45,9 +46,10 @@ class CameraStartRequest(BaseModel):
     exit_line: TripwireLine | None = None
     roi: RegionOfInterest = Field(default_factory=RegionOfInterest)
     reverse_direction: bool = False
-    processing_fps: float = Field(default=5.0, ge=1.0, le=15.0)
+    processing_profile: ProcessingProfile = "auto"
+    processing_fps: float | None = Field(default=None, ge=1.0, le=30.0)
     stream_fps: float = Field(default=24.0, ge=1.0, le=30.0)
-    max_frame_width: int = Field(default=640, ge=320, le=1280)
+    max_frame_width: int | None = Field(default=None, ge=320, le=1280)
     event_cooldown_seconds: float = Field(default=3.6, ge=0.5, le=30.0)
     paired_line_max_gap_seconds: float = Field(default=18.0, ge=1.0, le=120.0)
     track_ttl_seconds: float = Field(default=9.0, ge=1.0, le=60.0)
@@ -119,9 +121,28 @@ class HealthResponse(BaseModel):
     reid_model_path: str | None = None
     reid_error: str | None = None
     reid_average_inference_ms: float | None = None
+    reid_providers: list[str] = Field(default_factory=list)
     reid_gallery_size: int = 0
     reid_business_date: str | None = None
     reid_last_cleanup_at: str | None = None
+    processing_profile: str | None = None
+    detector_image_size: int | None = None
+    detector_p50_ms: float | None = None
+    detector_p95_ms: float | None = None
+    analytics_fps: float | None = None
+    processing_frame_age_ms: float | None = None
+    processing_frames_skipped: int = 0
+    reid_queue_depth: int = 0
+    reid_tasks_pending: int = 0
+    reid_tasks_dropped: int = 0
+    reid_tasks_completed: int = 0
+    reid_worker_p50_ms: float | None = None
+    reid_worker_p95_ms: float | None = None
+    identity_active_tracks: int = 0
+    identity_stitches: int = 0
+    identity_splits: int = 0
+    confirmed_unique_count: int = 0
+    degraded_unique_count: int = 0
 
 
 class CountResponse(BaseModel):
@@ -136,6 +157,7 @@ class CountResponse(BaseModel):
 
 class DetectionTrackResponse(BaseModel):
     track_id: int
+    source_track_id: int
     bbox: tuple[int, int, int, int]
     confidence: float
     centroid: tuple[int, int]
@@ -147,6 +169,9 @@ class DetectionTrackResponse(BaseModel):
     identity_confidence: str | None = None
     inside_roi: bool | None = None
     counting_eligible: bool | None = None
+    identity_state: str | None = None
+    identity_score: float | None = None
+    identity_source: str | None = None
 
 
 class DetectionResponse(BaseModel):
@@ -175,6 +200,8 @@ class MetricsSummaryResponse(BaseModel):
     peak_occupancy: int
     current_occupancy: int
     unique_count: int
+    confirmed_unique_count: int = 0
+    degraded_unique_count: int = 0
     total_events: int
     unsubmitted_events: int
     unsynced_events: int

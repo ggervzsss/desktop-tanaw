@@ -276,6 +276,7 @@ export function CameraManagementView({ cameras, setCameras }: CameraManagementVi
     const newCameraNode: Camera = {
       cameraType: newCam.cameraType,
       confidence: newCam.confidence,
+      processingProfile: "auto",
       config: {
         reverse: false,
         roi: { top: 10, left: 10, width: 80, height: 80 },
@@ -500,6 +501,7 @@ function normalizeCamera(camera: Camera): Camera {
     ...camera,
     cameraType,
     confidence: camera.confidence ?? 0.35,
+    processingProfile: camera.processingProfile ?? "auto",
     fps: camera.fps ?? 0,
     resolution: camera.resolution ?? "Adaptive",
     status: camera.status ?? "untested",

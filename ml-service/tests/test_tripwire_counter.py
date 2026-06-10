@@ -122,6 +122,15 @@ class TripwireCounterTest(unittest.TestCase):
 
         self.assertEqual(counter.counts.entry, 2)
 
+    def test_timestamp_ttl_expires_track_independent_of_frame_rate(self) -> None:
+        counter = TripwireCounter(tripwire_position=0.5, track_ttl_seconds=1.0)
+        counter.reset()
+        counter.begin_frame(now=10.0)
+        counter.update(1, Centroid(80, 80), 200, 120)
+        counter.begin_frame(now=11.1)
+
+        self.assertNotIn(1, counter.tracks)
+
     def _update(self, counter: TripwireCounter, track_id: int, x: float, y: float, expected: str | None = None) -> None:
         counter.begin_frame()
         self.assertEqual(counter.update(track_id, Centroid(x, y), 200, 120), expected)

@@ -1,3 +1,4 @@
+import argparse
 from pathlib import Path
 from tempfile import gettempdir
 
@@ -9,11 +10,22 @@ from torch import nn
 from torchreid import models, utils
 
 
-MODEL_NAME = "osnet_ain_x1_0"
-MODEL_SOURCE = "torchreid_osnet_ain_x1_0_msmt17"
-GOOGLE_DRIVE_FILE_ID = "1SigwBE6mPdqiJMqhuIY4aqC7--5CsMal"
 INPUT_HEIGHT = 256
 INPUT_WIDTH = 128
+MODEL_PROFILES = {
+    "cpu": {
+        "model_name": "osnet_x0_25",
+        "model_source": "torchreid_osnet_x0_25_msmt17",
+        "google_drive_file_id": "1Kkx2zW89jq_NETu4u42CFZTMVD5Hwm6e",
+        "output_name": "person_reid_cpu.onnx",
+    },
+    "quality": {
+        "model_name": "osnet_ain_x1_0",
+        "model_source": "torchreid_osnet_ain_x1_0_msmt17",
+        "google_drive_file_id": "1SigwBE6mPdqiJMqhuIY4aqC7--5CsMal",
+        "output_name": "person_reid.onnx",
+    },
+}
 
 
 class NormalizedFeatureExtractor(nn.Module):
@@ -27,20 +39,25 @@ class NormalizedFeatureExtractor(nn.Module):
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--profile", choices=sorted(MODEL_PROFILES), default="quality")
+    args = parser.parse_args()
+    profile = MODEL_PROFILES[args.profile]
+
     service_root = Path(__file__).resolve().parents[1]
     models_dir = service_root / "models"
     models_dir.mkdir(parents=True, exist_ok=True)
 
     checkpoint_dir = Path(gettempdir()) / "tanaw-reid-export"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    checkpoint_path = checkpoint_dir / f"{MODEL_SOURCE}.pth"
-    output_path = models_dir / "person_reid.onnx"
+    checkpoint_path = checkpoint_dir / f"{profile['model_source']}.pth"
+    output_path = models_dir / profile["output_name"]
 
     if not checkpoint_path.exists():
-        print(f"Downloading {MODEL_SOURCE} checkpoint...")
-        gdown.download(id=GOOGLE_DRIVE_FILE_ID, output=str(checkpoint_path), quiet=False)
+        print(f"Downloading {profile['model_source']} checkpoint...")
+        gdown.download(id=profile["google_drive_file_id"], output=str(checkpoint_path), quiet=False)
 
-    backbone = models.build_model(name=MODEL_NAME, num_classes=1000, pretrained=False, use_gpu=False)
+    backbone = models.build_model(name=profile["model_name"], num_classes=1000, pretrained=False, use_gpu=False)
     utils.load_pretrained_weights(backbone, str(checkpoint_path))
     backbone.eval()
 

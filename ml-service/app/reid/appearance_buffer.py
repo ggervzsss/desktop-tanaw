@@ -71,6 +71,29 @@ class TrackAppearanceBuffer:
         state.samples.sort(key=lambda sample: (sample.quality, sample.frame_index), reverse=True)
         state.samples = state.samples[: self.max_samples_per_track]
 
+    def mark_sample_requested(self, track_id: int, frame_index: int) -> None:
+        if track_id <= 0:
+            return
+        state = self._tracks.setdefault(track_id, TrackAppearance(last_seen_frame=frame_index))
+        state.last_seen_frame = frame_index
+        state.last_sampled_frame = frame_index
+
+    def remap_track(self, previous_track_id: int, target_track_id: int) -> None:
+        if previous_track_id == target_track_id:
+            return
+        previous = self._tracks.pop(previous_track_id, None)
+        if previous is None:
+            return
+        target = self._tracks.get(target_track_id)
+        if target is None:
+            self._tracks[target_track_id] = previous
+            return
+        target.last_seen_frame = max(target.last_seen_frame, previous.last_seen_frame)
+        target.last_sampled_frame = max(target.last_sampled_frame, previous.last_sampled_frame)
+        target.samples.extend(previous.samples)
+        target.samples.sort(key=lambda sample: (sample.quality, sample.frame_index), reverse=True)
+        target.samples = target.samples[: self.max_samples_per_track]
+
     def embedding_for_track(self, track_id: int) -> np.ndarray | None:
         state = self._tracks.get(track_id)
         if state is None or not state.samples:

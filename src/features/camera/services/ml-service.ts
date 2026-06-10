@@ -23,9 +23,28 @@ export type MlHealth = {
   reid_model_path: string | null;
   reid_error: string | null;
   reid_average_inference_ms: number | null;
+  reid_providers: string[];
   reid_gallery_size: number;
   reid_business_date: string | null;
   reid_last_cleanup_at: string | null;
+  processing_profile: string | null;
+  detector_image_size: number | null;
+  detector_p50_ms: number | null;
+  detector_p95_ms: number | null;
+  analytics_fps: number | null;
+  processing_frame_age_ms: number | null;
+  processing_frames_skipped: number;
+  reid_queue_depth: number;
+  reid_tasks_pending: number;
+  reid_tasks_dropped: number;
+  reid_tasks_completed: number;
+  reid_worker_p50_ms: number | null;
+  reid_worker_p95_ms: number | null;
+  identity_active_tracks: number;
+  identity_stitches: number;
+  identity_splits: number;
+  confirmed_unique_count: number;
+  degraded_unique_count: number;
 };
 
 export type MlCounts = {
@@ -40,6 +59,7 @@ export type MlCounts = {
 
 export type MlDetectionTrack = {
   track_id: number;
+  source_track_id: number;
   bbox: [number, number, number, number];
   confidence: number;
   centroid: [number, number];
@@ -51,6 +71,9 @@ export type MlDetectionTrack = {
   identity_confidence: string | null;
   inside_roi: boolean | null;
   counting_eligible: boolean | null;
+  identity_state: string | null;
+  identity_score: number | null;
+  identity_source: string | null;
 };
 
 export type MlDetections = {
@@ -79,6 +102,8 @@ export type LocalMetricsSummary = {
   peak_occupancy: number;
   current_occupancy: number;
   unique_count: number;
+  confirmed_unique_count: number;
+  degraded_unique_count: number;
   total_events: number;
   unsubmitted_events: number;
   unsynced_events: number;
@@ -207,10 +232,9 @@ export async function startCameraProcessing(baseUrl: string, camera: Camera): Pr
         entry_line: toMlTripwireLine(camera.config.tripwires.entry),
         event_cooldown_seconds: 3.6,
         exit_line: toMlTripwireLine(camera.config.tripwires.exit),
-        max_frame_width: 640,
         paired_line_max_gap_seconds: 18,
         password: camera.password || null,
-        processing_fps: 5,
+        processing_profile: camera.processingProfile,
         reverse_direction: camera.config.reverse,
         roi: toMlRoi(camera.config.roi),
         stream_fps: 24,
